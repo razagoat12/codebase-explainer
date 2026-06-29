@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Codebase Explainer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col items-center justify-center p-6">
+
+  <!-- Auth gate -->
+  <div id="auth-section" class="w-full max-w-md">
+    <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">Codebase Explainer</h1>
+    <p class="text-center text-gray-500 mb-8">Understand any codebase in plain language</p>
+
+    <div class="bg-white rounded-2xl shadow p-8">
+      <div class="flex gap-2 mb-6">
+        <button onclick="showTab('login')" id="tab-login" class="flex-1 py-2 rounded-lg bg-gray-800 text-white font-medium text-sm">Login</button>
+        <button onclick="showTab('register')" id="tab-register" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 font-medium text-sm">Register</button>
+      </div>
+
+      <div id="msg" class="hidden mb-4 p-3 rounded-lg text-sm"></div>
+
+      <form onsubmit="submitAuth(event)" class="space-y-4">
+        <input id="email" type="email" placeholder="Email" required
+          class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-800"/>
+        <input id="password" type="password" placeholder="Password" required
+          class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-800"/>
+        <button type="submit" id="auth-btn"
+          class="w-full bg-gray-800 text-white py-2.5 rounded-lg font-medium text-sm hover:bg-gray-700 transition">
+          Login
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Submit section -->
+  <div id="submit-section" class="hidden w-full max-w-xl">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold text-gray-800">Codebase Explainer</h1>
+      <div class="flex gap-3 items-center">
+        <a href="/dashboard.html" class="text-sm text-gray-500 hover:text-gray-800">My Analyses</a>
+        <button onclick="logout()" class="text-sm text-gray-400 hover:text-gray-700">Logout</button>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow p-8">
+      <h2 class="font-semibold text-gray-700 mb-5">Analyse a codebase</h2>
+
+      <!-- Source toggle -->
+      <div class="flex gap-2 mb-5">
+        <button onclick="setSource('local')" id="src-local"
+          class="flex-1 py-2 rounded-lg bg-gray-800 text-white text-sm font-medium">Local Path</button>
+        <button onclick="setSource('github')" id="src-github"
+          class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm font-medium">GitHub URL</button>
+      </div>
+
+      <div id="err" class="hidden mb-4 p-3 rounded-lg bg-red-50 text-red-600 text-sm"></div>
+
+      <form onsubmit="submitAnalysis(event)" class="space-y-4">
+        <input id="source-input" type="text"
+          placeholder="/Users/you/myproject"
+          class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-800"/>
+        <button type="submit" id="submit-btn"
+          class="w-full bg-gray-800 text-white py-2.5 rounded-lg font-medium text-sm hover:bg-gray-700 transition flex items-center justify-center gap-2">
+          <span id="btn-text">Analyse</span>
+          <svg id="spinner" class="hidden animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </button>
+      </form>
+    </div>
+  </div>
+
+<script>
+  let currentTab = 'login';
+  let currentSource = 'local';
+  const API = '';
+
+  function token() { return localStorage.getItem('token'); }
+
+  function showTab(t) {
+    currentTab = t;
+    document.getElementById('tab-login').className = `flex-1 py-2 rounded-lg text-sm font-medium ${t==='login'?'bg-gray-800 text-white':'bg-gray-100 text-gray-600'}`;
+    document.getElementById('tab-register').className = `flex-1 py-2 rounded-lg text-sm font-medium ${t==='register'?'bg-gray-800 text-white':'bg-gray-100 text-gray-600'}`;
+    document.getElementById('auth-btn').textContent = t === 'login' ? 'Login' : 'Register';
+  }
+
+  function setSource(s) {
+    currentSource = s;
+    document.getElementById('src-local').className = `flex-1 py-2 rounded-lg text-sm font-medium ${s==='local'?'bg-gray-800 text-white':'bg-gray-100 text-gray-600'}`;
+    document.getElementById('src-github').className = `flex-1 py-2 rounded-lg text-sm font-medium ${s==='github'?'bg-gray-800 text-white':'bg-gray-100 text-gray-600'}`;
+    document.getElementById('source-input').placeholder = s === 'local' ? '/Users/you/myproject' : 'https://github.com/user/repo';
+  }
+
+  function showMsg(text, ok) {
+    const el = document.getElementById('msg');
+    el.textContent = text;
+    el.className = `mb-4 p-3 rounded-lg text-sm ${ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`;
+    el.classList.remove('hidden');
+  }
+
+  async function submitAuth(e) {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const endpoint = currentTab === 'login' ? '/auth/login' : '/auth/register';
+
+    const res = await fetch(API + endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, password}),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showMsg(data.detail || 'Something went wrong', false);
+      return;
+    }
+
+    if (currentTab === 'register') {
+      showMsg('Registered! Logging you in…', true);
+      // auto-login
+      const lr = await fetch(API + '/auth/login', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email, password}),
+      });
+      const ld = await lr.json();
+      localStorage.setItem('token', ld.access_token);
+    } else {
+      localStorage.setItem('token', data.access_token);
+    }
+    showSubmit();
+  }
+
+  function showSubmit() {
+    document.getElementById('auth-section').classList.add('hidden');
+    document.getElementById('submit-section').classList.remove('hidden');
+  }
+
+  function logout() {
+    localStorage.removeItem('token');
+    location.reload();
+  }
+
+  async function submitAnalysis(e) {
+    e.preventDefault();
+    const val = document.getElementById('source-input').value.trim();
+    if (!val) return;
+
+    document.getElementById('err').classList.add('hidden');
+    document.getElementById('spinner').classList.remove('hidden');
+    document.getElementById('btn-text').textContent = 'Submitting…';
+    document.getElementById('submit-btn').disabled = true;
+
+    const endpoint = currentSource === 'github' ? '/analyze/github' : '/analyze/local';
+    const body = currentSource === 'github' ? {repo_url: val} : {directory_path: val};
+
+    const res = await fetch(API + endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token()}`},
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+
+    document.getElementById('spinner').classList.add('hidden');
+    document.getElementById('btn-text').textContent = 'Analyse';
+    document.getElementById('submit-btn').disabled = false;
+
+    if (!res.ok) {
+      const err = document.getElementById('err');
+      err.textContent = data.detail || 'Error submitting analysis';
+      err.classList.remove('hidden');
+      return;
+    }
+
+    window.location.href = `/result.html?id=${data.id}`;
+  }
+
+  // On load — check if already logged in
+  if (token()) showSubmit();
+</script>
+</body>
+</html>

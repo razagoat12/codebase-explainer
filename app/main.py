@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -22,8 +23,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Codebase Explainer",
-    description="Analyse any codebase and get a plain-language explanation powered by Gemini.",
-    version="0.1.0",
+    description="Analyse any codebase and get a plain-language explanation powered by Groq.",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
@@ -38,10 +39,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth_router)
-app.include_router(analysis_router)
-
-
+# API routes must be registered before the static mount
 @app.get("/health", tags=["meta"])
 async def health():
     return {"status": "ok"}
+
+app.include_router(auth_router)
+app.include_router(analysis_router)
+
+# Static frontend — serves index.html, dashboard.html, result.html
+app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

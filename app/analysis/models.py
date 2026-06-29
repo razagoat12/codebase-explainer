@@ -28,6 +28,8 @@ class Analysis(Base):
     frameworks: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array string
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    diagram: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_type: Mapped[str] = mapped_column(String, default="local", nullable=False)  # "local" | "github"
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

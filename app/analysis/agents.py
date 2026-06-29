@@ -1,170 +1,170 @@
 """
-Three-agent Gemini pipeline:
+Three-agent Groq pipeline (LLaMA 3.1 8B Instant):
   1. Difficulty Assessor  → returns structured JSON
   2. Explainer            → returns plain-language markdown explanation
   3. Planner              → returns phased plan markdown
 """
 import json
 
-import google.generativeai as genai
+from groq import Groq
 
 from app.config import settings
 
-genai.configure(api_key=settings.gemini_api_key)
+MODEL = "llama-3.1-8b-instant"
+client = Groq(api_key=settings.groq_api_key)
 
-MODEL = "gemini-2.0-flash"
-_GENERATION_CONFIG = genai.types.GenerationConfig(temperature=0.3, max_output_tokens=8192)
+# Keep prompts token-efficient for free tier (20K TPM limit)
+_MAX_ASSESSOR_FILES = 8
+_MAX_EXPLAINER_FILES = 10
+_MAX_FILE_CHARS = 400
 
 
-def _model() -> genai.GenerativeModel:
-    return genai.GenerativeModel(MODEL, generation_config=_GENERATION_CONFIG)
+def _chat(system: str, user: str, temperature: float = 0.3) -> str:
+    resp = client.chat.completions.create(
+        model=MODEL,
+        temperature=temperature,
+        max_tokens=4096,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    )
+    return resp.choices[0].message.content.strip()
 
 
-def _format_files(files: list[dict]) -> str:
+def _format_files(files: list[dict], max_files: int, max_chars: int) -> str:
     parts = []
-    for f in files:
-        parts.append(f"### {f['path']}\n```\n{f['content']}\n```")
+    for f in files[:max_files]:
+        snippet = f["content"][:max_chars]
+        if len(f["content"]) > max_chars:
+            snippet += "\n... (truncated)"
+        parts.append(f"### {f['path']}\n```\n{snippet}\n```")
     return "\n\n".join(parts)
 
 
 # ── Agent 1: Difficulty Assessor ──────────────────────────────────────────────
 
-_DIFFICULTY_PROMPT = """You are a senior software engineer assessing a codebase.
-Analyse the file tree, language stats, and file contents below.
-Return ONLY valid JSON (no markdown fences) with exactly these keys:
-{{
+_DIFFICULTY_SYSTEM = """You are a senior software engineer assessing codebase difficulty.
+Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:
+{
   "level": "Beginner" | "Intermediate" | "Advanced",
   "reason": "<1-2 sentence explanation>",
   "primary_language": "<language name>",
   "frameworks": ["<framework1>", ...]
-}}
+}
 
 Criteria:
 - Beginner: single language, simple scripts, no design patterns, few files
-- Intermediate: multiple files/modules, some patterns (MVC, REST), moderate complexity
-- Advanced: distributed systems, complex patterns, multiple languages, security layers
+- Intermediate: multiple modules, some patterns (MVC, REST), moderate complexity
+- Advanced: distributed systems, complex patterns, multiple languages, security layers"""
 
-File tree:
-{file_tree}
+
+def assess_difficulty(ingestion_result: dict) -> dict:
+    lang_stats = json.dumps(ingestion_result["stats"]["language_counts"], indent=2)
+    sample_files = _format_files(ingestion_result["files"], _MAX_ASSESSOR_FILES, _MAX_FILE_CHARS)
+
+    user_msg = f"""File tree:
+{ingestion_result["file_tree"]}
 
 Language stats:
 {lang_stats}
 
-File contents (sample):
-{file_contents}
-"""
+File samples:
+{sample_files}"""
 
+    raw = _chat(_DIFFICULTY_SYSTEM, user_msg)
 
-def assess_difficulty(ingestion_result: dict) -> dict:
-    file_tree = ingestion_result["file_tree"]
-    stats = ingestion_result["stats"]
-    lang_stats = json.dumps(stats["language_counts"], indent=2)
-
-    # Send only first 20 files to keep prompt size manageable
-    sample_files = ingestion_result["files"][:20]
-    file_contents = _format_files(sample_files)
-
-    prompt = _DIFFICULTY_PROMPT.format(
-        file_tree=file_tree, lang_stats=lang_stats, file_contents=file_contents
-    )
-
-    response = _model().generate_content(prompt)
-    raw = response.text.strip()
-
-    # Strip accidental markdown fences
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
 
-    return json.loads(raw)
+    return json.loads(raw.strip())
 
 
 # ── Agent 2: Explainer ────────────────────────────────────────────────────────
 
 _EXPLAINER_SYSTEM = """You are a patient, knowledgeable coding mentor.
 Explain codebases in plain language, adapting your style to the difficulty level:
-- Beginner: use simple analogies, avoid jargon, explain what each file does step-by-step
-- Intermediate: describe architecture patterns, data flow, and module responsibilities
-- Advanced: focus on design decisions, tradeoffs, scalability, and non-obvious patterns
+- Beginner: simple analogies, avoid jargon, explain what each file does
+- Intermediate: architecture patterns, data flow, module responsibilities
+- Advanced: design decisions, tradeoffs, scalability, non-obvious patterns
 
-Always structure your response as markdown with clear headings."""
-
-_EXPLAINER_PROMPT = """Difficulty level: {level} ({reason})
-Primary language: {primary_language}
-Frameworks detected: {frameworks}
-
-File tree:
-{file_tree}
-
-File contents:
-{file_contents}
-
-Write a thorough plain-language explanation of this codebase for someone at the {level} level."""
+Structure your response as markdown with clear headings."""
 
 
 def explain_codebase(ingestion_result: dict, difficulty: dict) -> str:
-    file_tree = ingestion_result["file_tree"]
-    file_contents = _format_files(ingestion_result["files"])
+    file_snippets = _format_files(ingestion_result["files"], _MAX_EXPLAINER_FILES, _MAX_FILE_CHARS)
 
-    prompt = _EXPLAINER_PROMPT.format(
-        level=difficulty["level"],
-        reason=difficulty["reason"],
-        primary_language=difficulty["primary_language"],
-        frameworks=", ".join(difficulty.get("frameworks", [])) or "none detected",
-        file_tree=file_tree,
-        file_contents=file_contents,
-    )
+    user_msg = f"""Difficulty: {difficulty["level"]} — {difficulty["reason"]}
+Language: {difficulty["primary_language"]}
+Frameworks: {", ".join(difficulty.get("frameworks", [])) or "none detected"}
 
-    model = genai.GenerativeModel(
-        MODEL,
-        system_instruction=_EXPLAINER_SYSTEM,
-        generation_config=_GENERATION_CONFIG,
-    )
-    response = model.generate_content(prompt)
-    return response.text.strip()
+File tree:
+{ingestion_result["file_tree"]}
+
+Key file snippets:
+{file_snippets}
+
+Write a plain-language explanation of this codebase for a {difficulty["level"]} level developer."""
+
+    return _chat(_EXPLAINER_SYSTEM, user_msg)
 
 
 # ── Agent 3: Planner ──────────────────────────────────────────────────────────
 
 _PLANNER_SYSTEM = """You are a pragmatic software architect.
-Given a codebase explanation and structure, produce a realistic phased development plan.
-Focus on: MVP → Phase 1 → Phase 2. Each phase must include:
-- Goals (what will work when this phase is done)
-- Key tasks (concrete, actionable)
-- Security considerations for this phase
-Format everything as clean markdown."""
-
-_PLANNER_PROMPT = """Codebase explanation:
-{explanation}
-
-File tree:
-{file_tree}
-
-Generate a phased implementation/improvement plan for this codebase.
-Phase 0 should be the true MVP (minimal viable), Phase 1 adds core features,
-Phase 2 adds scale/security/polish. Include security considerations per phase."""
+Given a codebase explanation, produce a realistic phased development plan.
+Structure: Phase 0 (MVP) → Phase 1 (core features) → Phase 2 (scale/security/polish).
+Each phase must include: Goals, Key tasks, Security considerations.
+Format as clean markdown."""
 
 
 def generate_plan(ingestion_result: dict, explanation: str) -> str:
-    prompt = _PLANNER_PROMPT.format(
-        explanation=explanation, file_tree=ingestion_result["file_tree"]
-    )
+    user_msg = f"""Codebase explanation:
+{explanation}
 
-    model = genai.GenerativeModel(
-        MODEL,
-        system_instruction=_PLANNER_SYSTEM,
-        generation_config=_GENERATION_CONFIG,
-    )
-    response = model.generate_content(prompt)
-    return response.text.strip()
+File tree:
+{ingestion_result["file_tree"]}
+
+Generate a phased implementation/improvement plan with security considerations per phase."""
+
+    return _chat(_PLANNER_SYSTEM, user_msg)
+
+
+# ── Agent 4: Diagram ──────────────────────────────────────────────────────────
+
+_DIAGRAM_SYSTEM = """You are a software architect. Given a file tree, output a Mermaid diagram
+showing the main modules and how they relate. Use 'graph TD' syntax only.
+Keep it simple — max 12 nodes. Output ONLY the raw Mermaid code, no fences, no explanation."""
+
+
+def generate_diagram(ingestion_result: dict) -> str:
+    user_msg = f"""File tree:
+{ingestion_result["file_tree"]}
+
+Generate a Mermaid graph TD diagram showing the main modules and their relationships."""
+
+    raw = _chat(_DIAGRAM_SYSTEM, user_msg, temperature=0.1)
+    # Strip fences if present
+    if "```" in raw:
+        parts = raw.split("```")
+        for part in parts:
+            if part.startswith("mermaid"):
+                raw = part[7:].strip()
+                break
+            elif part.strip().startswith("graph"):
+                raw = part.strip()
+                break
+    return raw.strip()
 
 
 # ── Orchestrator ──────────────────────────────────────────────────────────────
 
 def run_pipeline(ingestion_result: dict) -> dict:
-    """Run all three agents in sequence. Returns {difficulty, explanation, plan}."""
+    """Run all four agents in sequence. Returns {difficulty, explanation, plan, diagram}."""
     difficulty = assess_difficulty(ingestion_result)
     explanation = explain_codebase(ingestion_result, difficulty)
     plan = generate_plan(ingestion_result, explanation)
-    return {"difficulty": difficulty, "explanation": explanation, "plan": plan}
+    diagram = generate_diagram(ingestion_result)
+    return {"difficulty": difficulty, "explanation": explanation, "plan": plan, "diagram": diagram}

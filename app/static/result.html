@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Analysis — Codebase Explainer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+    window._mermaid = mermaid;
+  </script>
+  <style>
+    .prose h1,.prose h2,.prose h3 { font-weight:700; margin:1.2em 0 .5em; color:#1f2937; }
+    .prose h2 { font-size:1.15rem; }
+    .prose h3 { font-size:1rem; }
+    .prose p  { margin:.6em 0; color:#374151; line-height:1.7; }
+    .prose ul,.prose ol { padding-left:1.4em; margin:.5em 0; color:#374151; }
+    .prose li { margin:.25em 0; }
+    .prose code { background:#f3f4f6; padding:1px 5px; border-radius:4px; font-size:.85em; }
+    .prose pre  { background:#1f2937; color:#e5e7eb; padding:1em; border-radius:8px; overflow-x:auto; margin:.8em 0; }
+    .prose pre code { background:none; padding:0; color:inherit; }
+    .tab-btn.active { background:#1f2937; color:#fff; }
+    .tab-btn { background:#f3f4f6; color:#6b7280; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-6">
+<div class="max-w-3xl mx-auto">
+
+  <!-- Header -->
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <a href="/dashboard.html" class="text-sm text-gray-400 hover:text-gray-600 mb-1 block">← My Analyses</a>
+      <h1 class="text-2xl font-bold text-gray-800" id="page-title">Analysis</h1>
+    </div>
+    <button onclick="logout()" class="text-sm text-gray-400 hover:text-gray-700">Logout</button>
+  </div>
+
+  <!-- Status / meta card -->
+  <div id="meta-card" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6 hidden">
+    <div class="flex flex-wrap gap-3 items-center">
+      <span id="badge-status" class="text-xs font-semibold px-3 py-1 rounded-full bg-gray-100 text-gray-600"></span>
+      <span id="badge-difficulty" class="text-xs font-semibold px-3 py-1 rounded-full bg-purple-100 text-purple-700 hidden"></span>
+      <span id="badge-lang" class="text-xs font-semibold px-3 py-1 rounded-full bg-blue-100 text-blue-700 hidden"></span>
+    </div>
+    <p id="source-label" class="text-sm text-gray-500 mt-3 truncate"></p>
+    <p id="reason-text" class="text-sm text-gray-500 mt-1 hidden"></p>
+    <div id="frameworks-row" class="flex flex-wrap gap-2 mt-3 hidden"></div>
+  </div>
+
+  <!-- Polling state -->
+  <div id="polling-card" class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-10 text-center">
+    <svg class="animate-spin h-8 w-8 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
+    <p class="text-gray-500 font-medium" id="polling-msg">Analysing your codebase…</p>
+    <p class="text-gray-400 text-sm mt-1">This takes about 30 seconds</p>
+  </div>
+
+  <!-- Error -->
+  <div id="error-card" class="hidden bg-red-50 border border-red-200 rounded-2xl p-6">
+    <p class="font-semibold text-red-700 mb-1">Analysis failed</p>
+    <p id="error-msg" class="text-sm text-red-600"></p>
+  </div>
+
+  <!-- Results tabs -->
+  <div id="results-section" class="hidden">
+    <div class="flex gap-2 mb-4">
+      <button class="tab-btn active rounded-lg px-4 py-2 text-sm font-medium transition" onclick="showTab('explanation', this)">Explanation</button>
+      <button class="tab-btn rounded-lg px-4 py-2 text-sm font-medium transition" onclick="showTab('plan', this)">Plan</button>
+      <button class="tab-btn rounded-lg px-4 py-2 text-sm font-medium transition" id="diagram-tab-btn" onclick="showTab('diagram', this)">Diagram</button>
+    </div>
+
+    <div id="tab-explanation" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-7 prose max-w-none"></div>
+    <div id="tab-plan"        class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-7 prose max-w-none"></div>
+    <div id="tab-diagram"     class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-7">
+      <div id="mermaid-container" class="overflow-x-auto"></div>
+      <pre id="mermaid-fallback" class="hidden text-xs text-gray-500 mt-4 bg-gray-50 p-4 rounded-lg overflow-x-auto"></pre>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = '';
+  const params = new URLSearchParams(location.search);
+  const analysisId = params.get('id');
+
+  function token() { return localStorage.getItem('token'); }
+  function logout() { localStorage.removeItem('token'); window.location.href = '/'; }
+
+  if (!token() || !analysisId) { window.location.href = '/'; }
+
+  const STATUS_BADGE = {
+    done:       'bg-green-100 text-green-700',
+    processing: 'bg-blue-100 text-blue-700',
+    pending:    'bg-yellow-100 text-yellow-700',
+    error:      'bg-red-100 text-red-600',
+  };
+
+  function showTab(name, btn) {
+    ['explanation','plan','diagram'].forEach(t => {
+      document.getElementById('tab-' + t).classList.add('hidden');
+    });
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.remove('hidden');
+    if (btn) btn.classList.add('active');
+  }
+
+  function renderMeta(d) {
+    const card = document.getElementById('meta-card');
+    card.classList.remove('hidden');
+
+    const badge = document.getElementById('badge-status');
+    badge.textContent = d.status;
+    badge.className = `text-xs font-semibold px-3 py-1 rounded-full ${STATUS_BADGE[d.status] || 'bg-gray-100 text-gray-600'}`;
+
+    document.getElementById('source-label').textContent = d.directory_path;
+    document.getElementById('page-title').textContent =
+      d.source_type === 'github' ? 'GitHub Analysis' : 'Local Analysis';
+
+    if (d.difficulty) {
+      const bd = document.getElementById('badge-difficulty');
+      bd.textContent = d.difficulty;
+      bd.classList.remove('hidden');
+    }
+    if (d.primary_language) {
+      const bl = document.getElementById('badge-lang');
+      bl.textContent = d.primary_language;
+      bl.classList.remove('hidden');
+    }
+    if (d.difficulty_reason) {
+      const rt = document.getElementById('reason-text');
+      rt.textContent = d.difficulty_reason;
+      rt.classList.remove('hidden');
+    }
+    if (d.frameworks && d.frameworks.length) {
+      const row = document.getElementById('frameworks-row');
+      row.classList.remove('hidden');
+      row.innerHTML = d.frameworks.map(f =>
+        `<span class="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">${f}</span>`
+      ).join('');
+    }
+  }
+
+  async function renderDiagram(code) {
+    const container = document.getElementById('mermaid-container');
+    const fallback  = document.getElementById('mermaid-fallback');
+    if (!code) { document.getElementById('diagram-tab-btn').classList.add('hidden'); return; }
+
+    try {
+      // Wait for mermaid module to load
+      let attempts = 0;
+      while (!window._mermaid && attempts < 20) {
+        await new Promise(r => setTimeout(r, 200));
+        attempts++;
+      }
+      if (!window._mermaid) throw new Error('Mermaid not loaded');
+
+      const { svg } = await window._mermaid.render('diagram-svg', code);
+      container.innerHTML = svg;
+    } catch (e) {
+      container.classList.add('hidden');
+      fallback.textContent = code;
+      fallback.classList.remove('hidden');
+    }
+  }
+
+  function renderResults(d) {
+    renderMeta(d);
+    document.getElementById('polling-card').classList.add('hidden');
+    document.getElementById('results-section').classList.remove('hidden');
+
+    document.getElementById('tab-explanation').innerHTML = marked.parse(d.explanation || '');
+    document.getElementById('tab-plan').innerHTML = marked.parse(d.plan || '');
+    renderDiagram(d.diagram);
+  }
+
+  async function poll() {
+    document.getElementById('polling-card').classList.remove('hidden');
+
+    let attempts = 0;
+    while (true) {
+      await new Promise(r => setTimeout(r, attempts === 0 ? 2000 : 4000));
+      attempts++;
+
+      const res = await fetch(`${API}/analyze/${analysisId}`, {
+        headers: { 'Authorization': `Bearer ${token()}` },
+      });
+
+      if (!res.ok) { logout(); return; }
+
+      const d = await res.json();
+      renderMeta(d);
+
+      if (d.status === 'done') {
+        renderResults(d);
+        return;
+      }
+
+      if (d.status === 'error') {
+        document.getElementById('polling-card').classList.add('hidden');
+        document.getElementById('error-card').classList.remove('hidden');
+        document.getElementById('error-msg').textContent = d.error_message || 'Unknown error';
+        return;
+      }
+
+      const msgs = ['Analysing your codebase…', 'Running difficulty assessment…', 'Generating explanation…', 'Building your plan…', 'Almost done…'];
+      document.getElementById('polling-msg').textContent = msgs[Math.min(attempts - 1, msgs.length - 1)];
+    }
+  }
+
+  poll();
+</script>
+</body>
+</html>
