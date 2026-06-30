@@ -63,17 +63,37 @@ The tier system is wired but `plan_tier` is only updated manually in the DB. To 
 3. Add `/billing/webhook` to receive `customer.subscription.created/deleted` events and set `user.plan_tier` accordingly
 4. Set `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` in `.env`
 
-### Add Celery + Redis for large codebases
+### Celery + Redis queue (already wired, just turn it on)
 
-`BackgroundTasks` runs in the same process as your web server. For genuine scale:
+The code is set up to run analyses through Celery+Redis instead of `BackgroundTasks`.
+It's **opt-in** — when `USE_CELERY=false` (the default), no Redis is needed.
 
-1. Run Redis (`brew install redis && redis-server`)
-2. Add `pip install celery redis`
-3. Create `app/worker.py` with a Celery instance pointing at Redis
-4. Convert `_run_analysis` to a `@celery.task` decorated function
-5. Run a separate worker process: `celery -A app.worker worker --loglevel=info`
+To enable:
 
-This lets you scale workers independently of the API.
+1. **Install + start Redis:**
+   ```bash
+   brew install redis
+   brew services start redis
+   redis-cli ping        # should print PONG
+   ```
+
+2. **Set `USE_CELERY=true` in `.env`** (and tweak `REDIS_URL` if not on localhost).
+
+3. **Run 2 processes** (3 terminals total if you count `brew services`):
+   ```bash
+   # Terminal A — web server (as before)
+   .venv/bin/uvicorn app.main:app --reload
+
+   # Terminal B — Celery worker
+   .venv/bin/celery -A app.worker worker --loglevel=info
+   ```
+
+That's it. Submit an analysis and the FastAPI log will say "task queued";
+the actual Groq calls show up in the Celery terminal. Kill the worker
+mid-job and the task survives in Redis until you restart it.
+
+To run multiple workers in parallel: `--concurrency=4` (or use multiple
+worker processes — Redis fans them out automatically).
 
 ### Hosting
 

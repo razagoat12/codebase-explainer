@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     max_file_size_bytes: int = 512_000
     max_total_content_bytes: int = 2_097_152
 
+    # Queue settings — opt-in. Defaults to FastAPI BackgroundTasks (no Redis needed).
+    use_celery: bool = False
+    redis_url: str = "redis://localhost:6379/0"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @property

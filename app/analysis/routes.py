@@ -13,7 +13,17 @@ from app.analysis.ingestion import compute_content_hash, ingest_directory
 from app.analysis.models import Analysis, AnalysisStatus
 from app.auth.models import User
 from app.auth.routes import enforce_quota, get_current_user
+from app.config import settings
 from app.database import AsyncSessionLocal, get_db
+
+
+def _dispatch(background_tasks: BackgroundTasks, analysis_id: str, source: str, source_type: str) -> None:
+    """Send the analysis job to Celery if enabled, else run as a FastAPI background task."""
+    if settings.use_celery:
+        from app.analysis.tasks import run_analysis_task
+        run_analysis_task.delay(analysis_id, source, source_type)
+    else:
+        background_tasks.add_task(_run_analysis, analysis_id, source, source_type)
 
 # Overridable in tests
 _session_factory = AsyncSessionLocal
@@ -175,7 +185,7 @@ async def analyze_local(
     await db.commit()
     await db.refresh(analysis)
 
-    background_tasks.add_task(_run_analysis, analysis.id, body.directory_path, "local")
+    _dispatch(background_tasks, analysis.id, body.directory_path, "local")
 
     return AnalysisSummary(
         id=analysis.id, status=analysis.status,
@@ -201,7 +211,7 @@ async def analyze_github(
     await db.commit()
     await db.refresh(analysis)
 
-    background_tasks.add_task(_run_analysis, analysis.id, body.repo_url, "github")
+    _dispatch(background_tasks, analysis.id, body.repo_url, "github")
 
     return AnalysisSummary(
         id=analysis.id, status=analysis.status,
