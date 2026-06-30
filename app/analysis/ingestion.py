@@ -1,7 +1,19 @@
+import hashlib
 import os
 from pathlib import Path
 
 from app.config import settings
+
+
+def compute_content_hash(files: list[dict]) -> str:
+    """Stable hash of all file contents — same code = same hash, regardless of path."""
+    h = hashlib.sha256()
+    for f in sorted(files, key=lambda x: x["path"]):
+        h.update(f["path"].encode())
+        h.update(b"\0")
+        h.update(f["content"].encode("utf-8", errors="replace"))
+        h.update(b"\0")
+    return h.hexdigest()
 
 # Extensions we'll read; everything else is skipped
 READABLE_EXTENSIONS = {

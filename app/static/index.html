@@ -39,6 +39,7 @@
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-2xl font-bold text-gray-800">Codebase Explainer</h1>
       <div class="flex gap-3 items-center">
+        <span id="usage-badge" class="hidden text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600"></span>
         <a href="/dashboard.html" class="text-sm text-gray-500 hover:text-gray-800">My Analyses</a>
         <button onclick="logout()" class="text-sm text-gray-400 hover:text-gray-700">Logout</button>
       </div>
@@ -137,6 +138,18 @@
   function showSubmit() {
     document.getElementById('auth-section').classList.add('hidden');
     document.getElementById('submit-section').classList.remove('hidden');
+    loadUsage();
+  }
+
+  async function loadUsage() {
+    const res = await fetch(API + '/auth/me', { headers: { 'Authorization': `Bearer ${token()}` } });
+    if (!res.ok) { logout(); return; }
+    const me = await res.json();
+    const badge = document.getElementById('usage-badge');
+    const tierColour = me.plan_tier === 'pro' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600';
+    badge.textContent = `${me.plan_tier.toUpperCase()} · ${me.monthly_usage}/${me.monthly_quota}`;
+    badge.className = `text-xs font-semibold px-2.5 py-1 rounded-full ${tierColour}`;
+    badge.classList.remove('hidden');
   }
 
   function logout() {
@@ -177,6 +190,9 @@
 
     window.location.href = `/result.html?id=${data.id}`;
   }
+
+  // Refresh usage badge if we landed here after submitting
+  if (token()) loadUsage();
 
   // On load — check if already logged in
   if (token()) showSubmit();

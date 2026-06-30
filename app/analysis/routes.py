@@ -9,13 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analysis.agents import run_pipeline
 from app.analysis.github import ingest_github, parse_github_url
-from app.analysis.ingestion import ingest_directory
+from app.analysis.ingestion import compute_content_hash, ingest_directory
 from app.analysis.models import Analysis, AnalysisStatus
 from app.auth.models import User
-from app.auth.routes import get_current_user
+from app.auth.routes import enforce_quota, get_current_user
 from app.database import AsyncSessionLocal, get_db
 
-# Overridable in tests so background tasks use the test session factory
+# Overridable in tests
 _session_factory = AsyncSessionLocal
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
@@ -37,6 +37,20 @@ class AnalysisSummary(BaseModel):
     created_at: datetime
 
 
+class SecurityFinding(BaseModel):
+    severity: str
+    category: str
+    file: str
+    issue: str
+    fix: str
+
+
+class SecurityReport(BaseModel):
+    summary: str
+    risk_level: str
+    findings: list[SecurityFinding]
+
+
 class AnalysisResult(BaseModel):
     id: str
     status: str
@@ -49,13 +63,42 @@ class AnalysisResult(BaseModel):
     explanation: str | None
     plan: str | None
     diagram: str | None
+    security: SecurityReport | None
+    served_from_cache: bool
     error_message: str | None
     created_at: datetime
     completed_at: datetime | None
 
 
+async def _find_cached(db: AsyncSession, content_hash: str) -> Analysis | None:
+    """Return a completed analysis with the same content hash, if any exists."""
+    return await db.scalar(
+        select(Analysis)
+        .where(Analysis.content_hash == content_hash)
+        .where(Analysis.status == AnalysisStatus.done)
+        .order_by(Analysis.completed_at.desc())
+        .limit(1)
+    )
+
+
+def _copy_cached_results(target: Analysis, source: Analysis) -> None:
+    target.difficulty_level = source.difficulty_level
+    target.difficulty_reason = source.difficulty_reason
+    target.primary_language = source.primary_language
+    target.frameworks = source.frameworks
+    target.explanation = source.explanation
+    target.plan = source.plan
+    target.diagram = source.diagram
+    target.security_findings = source.security_findings
+    target.security_risk = source.security_risk
+    target.content_hash = source.content_hash
+    target.served_from_cache = True
+    target.status = AnalysisStatus.done
+    target.completed_at = datetime.now(timezone.utc)
+
+
 async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None:
-    """Background task: ingest → run pipeline → persist results."""
+    """Background task: ingest → check cache → run pipeline → persist."""
     async with _session_factory() as db:
         analysis = await db.get(Analysis, analysis_id)
         if not analysis:
@@ -70,6 +113,21 @@ async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None
             else:
                 ingestion = await asyncio.to_thread(ingest_directory, source)
 
+            content_hash = compute_content_hash(ingestion["files"])
+            analysis.content_hash = content_hash
+
+            # Cache lookup — identical content = serve from cache
+            cached = await _find_cached(db, content_hash)
+            if cached and cached.id != analysis.id:
+                _copy_cached_results(analysis, cached)
+                # Increment user quota even for cached results (still costs us nothing but a DB read)
+                user = await db.get(User, analysis.user_id)
+                if user:
+                    user.monthly_usage += 1
+                await db.commit()
+                return
+
+            # Cache miss — run full pipeline
             result = await asyncio.to_thread(run_pipeline, ingestion)
 
             difficulty = result["difficulty"]
@@ -80,8 +138,18 @@ async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None
             analysis.explanation = result["explanation"]
             analysis.plan = result["plan"]
             analysis.diagram = result.get("diagram")
+
+            sec = result.get("security") or {}
+            analysis.security_findings = json.dumps(sec)
+            analysis.security_risk = sec.get("risk_level")
+
             analysis.status = AnalysisStatus.done
             analysis.completed_at = datetime.now(timezone.utc)
+
+            user = await db.get(User, analysis.user_id)
+            if user:
+                user.monthly_usage += 1
+
         except Exception as exc:
             analysis.status = AnalysisStatus.error
             analysis.error_message = str(exc)
@@ -93,7 +161,7 @@ async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None
 async def analyze_local(
     body: LocalAnalysisRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(enforce_quota),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -120,7 +188,7 @@ async def analyze_local(
 async def analyze_github(
     body: GithubAnalysisRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(enforce_quota),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -175,6 +243,17 @@ async def get_analysis(
         raise HTTPException(status_code=403, detail="Access denied")
 
     frameworks = json.loads(analysis.frameworks) if analysis.frameworks else None
+    security = None
+    if analysis.security_findings:
+        try:
+            sec_raw = json.loads(analysis.security_findings)
+            security = SecurityReport(
+                summary=sec_raw.get("summary", ""),
+                risk_level=sec_raw.get("risk_level", "Low"),
+                findings=[SecurityFinding(**f) for f in sec_raw.get("findings", [])],
+            )
+        except (json.JSONDecodeError, TypeError, ValueError):
+            security = None
 
     return AnalysisResult(
         id=analysis.id,
@@ -188,6 +267,8 @@ async def get_analysis(
         explanation=analysis.explanation,
         plan=analysis.plan,
         diagram=analysis.diagram,
+        security=security,
+        served_from_cache=analysis.served_from_cache,
         error_message=analysis.error_message,
         created_at=analysis.created_at,
         completed_at=analysis.completed_at,

@@ -4,7 +4,9 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.models import User
+from datetime import datetime, timedelta, timezone
+
+from app.auth.models import TIER_QUOTAS, PlanTier, User
 from app.auth.utils import create_access_token, decode_token, hash_password, verify_password
 from app.database import get_db
 from fastapi.security import OAuth2PasswordBearer
@@ -31,6 +33,14 @@ class TokenResponse(BaseModel):
 class UserResponse(BaseModel):
     user_id: str
     email: str
+
+
+class MeResponse(BaseModel):
+    user_id: str
+    email: str
+    plan_tier: str
+    monthly_usage: int
+    monthly_quota: int
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -66,3 +76,42 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+def _quota_for(user: User) -> int:
+    return TIER_QUOTAS.get(PlanTier(user.plan_tier), TIER_QUOTAS[PlanTier.free])
+
+
+async def enforce_quota(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Dependency that resets monthly counters and blocks if over quota."""
+    now = datetime.now(timezone.utc)
+    reset_at = current_user.usage_reset_at
+    if reset_at.tzinfo is None:
+        reset_at = reset_at.replace(tzinfo=timezone.utc)
+
+    # Reset usage every 30 days
+    if now - reset_at > timedelta(days=30):
+        current_user.monthly_usage = 0
+        current_user.usage_reset_at = now
+        await db.commit()
+
+    if current_user.monthly_usage >= _quota_for(current_user):
+        raise HTTPException(
+            status_code=402,
+            detail=f"Monthly quota exceeded ({_quota_for(current_user)} analyses). Upgrade to Pro to continue.",
+        )
+    return current_user
+
+
+@router.get("/me", response_model=MeResponse)
+async def me(current_user: User = Depends(get_current_user)):
+    return MeResponse(
+        user_id=current_user.id,
+        email=current_user.email,
+        plan_tier=current_user.plan_tier,
+        monthly_usage=current_user.monthly_usage,
+        monthly_quota=_quota_for(current_user),
+    )

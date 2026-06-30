@@ -43,6 +43,8 @@
       <span id="badge-status" class="text-xs font-semibold px-3 py-1 rounded-full bg-gray-100 text-gray-600"></span>
       <span id="badge-difficulty" class="text-xs font-semibold px-3 py-1 rounded-full bg-purple-100 text-purple-700 hidden"></span>
       <span id="badge-lang" class="text-xs font-semibold px-3 py-1 rounded-full bg-blue-100 text-blue-700 hidden"></span>
+      <span id="badge-security" class="text-xs font-semibold px-3 py-1 rounded-full hidden"></span>
+      <span id="badge-cached" class="text-xs font-semibold px-3 py-1 rounded-full bg-amber-100 text-amber-700 hidden">⚡ Cached</span>
     </div>
     <p id="source-label" class="text-sm text-gray-500 mt-3 truncate"></p>
     <p id="reason-text" class="text-sm text-gray-500 mt-1 hidden"></p>
@@ -67,10 +69,11 @@
 
   <!-- Results tabs -->
   <div id="results-section" class="hidden">
-    <div class="flex gap-2 mb-4">
+    <div class="flex gap-2 mb-4 flex-wrap">
       <button class="tab-btn active rounded-lg px-4 py-2 text-sm font-medium transition" onclick="showTab('explanation', this)">Explanation</button>
       <button class="tab-btn rounded-lg px-4 py-2 text-sm font-medium transition" onclick="showTab('plan', this)">Plan</button>
       <button class="tab-btn rounded-lg px-4 py-2 text-sm font-medium transition" id="diagram-tab-btn" onclick="showTab('diagram', this)">Diagram</button>
+      <button class="tab-btn rounded-lg px-4 py-2 text-sm font-medium transition hidden" id="security-tab-btn" onclick="showTab('security', this)">🛡 Security</button>
     </div>
 
     <div id="tab-explanation" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-7 prose max-w-none"></div>
@@ -78,6 +81,11 @@
     <div id="tab-diagram"     class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-7">
       <div id="mermaid-container" class="overflow-x-auto"></div>
       <pre id="mermaid-fallback" class="hidden text-xs text-gray-500 mt-4 bg-gray-50 p-4 rounded-lg overflow-x-auto"></pre>
+    </div>
+    <div id="tab-security"    class="hidden bg-white rounded-2xl shadow-sm border border-gray-100 p-7">
+      <p id="sec-summary" class="text-gray-700 mb-5"></p>
+      <div id="sec-findings" class="space-y-3"></div>
+      <p id="sec-clean" class="hidden text-green-700 font-medium">No critical security issues detected.</p>
     </div>
   </div>
 
@@ -100,13 +108,58 @@
     error:      'bg-red-100 text-red-600',
   };
 
+  const RISK_BADGE = {
+    Critical: 'bg-red-100 text-red-700',
+    High:     'bg-orange-100 text-orange-700',
+    Medium:   'bg-yellow-100 text-yellow-700',
+    Low:      'bg-green-100 text-green-700',
+  };
+
+  const SEV_BORDER = {
+    critical: 'border-red-300 bg-red-50',
+    high:     'border-orange-300 bg-orange-50',
+    medium:   'border-yellow-300 bg-yellow-50',
+    low:      'border-gray-200 bg-gray-50',
+  };
+
   function showTab(name, btn) {
-    ['explanation','plan','diagram'].forEach(t => {
+    ['explanation','plan','diagram','security'].forEach(t => {
       document.getElementById('tab-' + t).classList.add('hidden');
     });
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name).classList.remove('hidden');
     if (btn) btn.classList.add('active');
+  }
+
+  function renderSecurity(sec) {
+    if (!sec) { document.getElementById('security-tab-btn').classList.add('hidden'); return; }
+
+    document.getElementById('security-tab-btn').classList.remove('hidden');
+
+    const badge = document.getElementById('badge-security');
+    badge.textContent = `🛡 ${sec.risk_level} Risk`;
+    badge.className = `text-xs font-semibold px-3 py-1 rounded-full ${RISK_BADGE[sec.risk_level] || 'bg-gray-100 text-gray-600'}`;
+    badge.classList.remove('hidden');
+
+    document.getElementById('sec-summary').textContent = sec.summary;
+
+    const list = document.getElementById('sec-findings');
+    if (!sec.findings || !sec.findings.length) {
+      document.getElementById('sec-clean').classList.remove('hidden');
+      list.innerHTML = '';
+      return;
+    }
+
+    list.innerHTML = sec.findings.map(f => `
+      <div class="border-l-4 ${SEV_BORDER[f.severity] || 'border-gray-200 bg-gray-50'} p-4 rounded-r-lg">
+        <div class="flex justify-between items-start mb-1">
+          <span class="text-xs font-semibold uppercase text-gray-600">${f.severity} · ${f.category}</span>
+          <span class="text-xs font-mono text-gray-500">${f.file}</span>
+        </div>
+        <p class="text-sm text-gray-800 font-medium mb-1">${f.issue}</p>
+        <p class="text-sm text-gray-600"><span class="font-semibold">Fix:</span> ${f.fix}</p>
+      </div>
+    `).join('');
   }
 
   function renderMeta(d) {
@@ -143,6 +196,9 @@
         `<span class="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">${f}</span>`
       ).join('');
     }
+    if (d.served_from_cache) {
+      document.getElementById('badge-cached').classList.remove('hidden');
+    }
   }
 
   async function renderDiagram(code) {
@@ -176,6 +232,7 @@
     document.getElementById('tab-explanation').innerHTML = marked.parse(d.explanation || '');
     document.getElementById('tab-plan').innerHTML = marked.parse(d.plan || '');
     renderDiagram(d.diagram);
+    renderSecurity(d.security);
   }
 
   async function poll() {

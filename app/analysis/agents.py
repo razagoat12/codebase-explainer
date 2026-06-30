@@ -159,12 +159,62 @@ Generate a Mermaid graph TD diagram showing the main modules and their relations
     return raw.strip()
 
 
+# ── Agent 5: Security Auditor ─────────────────────────────────────────────────
+
+_SECURITY_SYSTEM = """You are a security engineer reviewing source code for vulnerabilities.
+Scan for these specific issues and return ONLY valid JSON (no fences, no extra text):
+{
+  "summary": "<1-2 sentence overall security posture>",
+  "risk_level": "Low" | "Medium" | "High" | "Critical",
+  "findings": [
+    {
+      "severity": "low" | "medium" | "high" | "critical",
+      "category": "secret" | "injection" | "exposed_env" | "weak_auth" | "other",
+      "file": "<path>",
+      "issue": "<what's wrong>",
+      "fix": "<how to fix it>"
+    }
+  ]
+}
+
+Look for: hardcoded API keys/passwords/tokens, SQL injection (string concat in queries),
+exposed environment variables in client code, weak password rules, missing auth checks,
+unsafe deserialisation, command injection. Be concrete — quote the file path.
+If nothing concerning is found, return an empty findings array and risk_level "Low"."""
+
+
+def audit_security(ingestion_result: dict) -> dict:
+    files = _format_files(ingestion_result["files"], _MAX_EXPLAINER_FILES, _MAX_FILE_CHARS)
+    user_msg = f"""File tree:
+{ingestion_result["file_tree"]}
+
+Code to audit:
+{files}"""
+
+    raw = _chat(_SECURITY_SYSTEM, user_msg, temperature=0.1)
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    try:
+        return json.loads(raw.strip())
+    except json.JSONDecodeError:
+        return {"summary": "Security audit parse failed", "risk_level": "Low", "findings": []}
+
+
 # ── Orchestrator ──────────────────────────────────────────────────────────────
 
 def run_pipeline(ingestion_result: dict) -> dict:
-    """Run all four agents in sequence. Returns {difficulty, explanation, plan, diagram}."""
+    """Run all five agents in sequence."""
     difficulty = assess_difficulty(ingestion_result)
     explanation = explain_codebase(ingestion_result, difficulty)
     plan = generate_plan(ingestion_result, explanation)
     diagram = generate_diagram(ingestion_result)
-    return {"difficulty": difficulty, "explanation": explanation, "plan": plan, "diagram": diagram}
+    security = audit_security(ingestion_result)
+    return {
+        "difficulty": difficulty,
+        "explanation": explanation,
+        "plan": plan,
+        "diagram": diagram,
+        "security": security,
+    }

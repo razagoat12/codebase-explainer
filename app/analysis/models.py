@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -29,7 +29,11 @@ class Analysis(Base):
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     plan: Mapped[str | None] = mapped_column(Text, nullable=True)
     diagram: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_type: Mapped[str] = mapped_column(String, default="local", nullable=False)  # "local" | "github"
+    security_findings: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    security_risk: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_type: Mapped[str] = mapped_column(String, default="local", nullable=False)
+    content_hash: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    served_from_cache: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
