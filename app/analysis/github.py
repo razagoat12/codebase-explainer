@@ -45,7 +45,7 @@ def _get_headers() -> dict:
 def _fetch_tree(owner: str, repo: str, branch: str = "HEAD") -> list[dict]:
     """Fetch the full file tree using Git Trees API (recursive, one call)."""
     url = f"{GITHUB_API}/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
-    resp = httpx.get(url, headers=_get_headers(), timeout=20)
+    resp = httpx.get(url, headers=_get_headers(), timeout=20, follow_redirects=True)
     resp.raise_for_status()
     data = resp.json()
     if data.get("truncated"):
@@ -56,7 +56,7 @@ def _fetch_tree(owner: str, repo: str, branch: str = "HEAD") -> list[dict]:
 def _fetch_file(owner: str, repo: str, path: str) -> str | None:
     """Fetch a single file's content via Contents API."""
     url = f"{GITHUB_API}/repos/{owner}/{repo}/contents/{path}"
-    resp = httpx.get(url, headers=_get_headers(), timeout=15)
+    resp = httpx.get(url, headers=_get_headers(), timeout=15, follow_redirects=True)
     if resp.status_code != 200:
         return None
     data = resp.json()
@@ -86,7 +86,9 @@ def ingest_github(repo_url: str) -> dict:
     owner, repo = parse_github_url(repo_url)
 
     # Get default branch
-    meta = httpx.get(f"{GITHUB_API}/repos/{owner}/{repo}", headers=_get_headers(), timeout=15)
+    meta = httpx.get(
+        f"{GITHUB_API}/repos/{owner}/{repo}", headers=_get_headers(), timeout=15, follow_redirects=True
+    )
     meta.raise_for_status()
     default_branch = meta.json().get("default_branch", "main")
 
