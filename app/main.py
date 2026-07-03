@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -47,5 +49,15 @@ async def health():
 app.include_router(auth_router)
 app.include_router(analysis_router)
 
-# Static frontend — serves index.html, dashboard.html, result.html
-app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
+# React frontend (Vite build output). Vite-hashed assets are served directly;
+# any other path falls back to index.html so React Router can handle it client-side.
+FRONTEND_DIST = Path("frontend/dist").resolve()
+app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa(full_path: str):
+    candidate = (FRONTEND_DIST / full_path).resolve()
+    if full_path and candidate.is_relative_to(FRONTEND_DIST) and candidate.is_file():
+        return FileResponse(candidate)
+    return FileResponse(FRONTEND_DIST / "index.html")

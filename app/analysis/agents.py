@@ -1,35 +1,45 @@
 """
-Three-agent Groq pipeline (LLaMA 3.1 8B Instant):
-  1. Difficulty Assessor  → returns structured JSON
-  2. Explainer            → returns plain-language markdown explanation
-  3. Planner              → returns phased plan markdown
+Five-agent pipeline powered by NVIDIA Nemotron (OpenAI-compatible endpoint):
+  1. Difficulty Assessor  → JSON
+  2. Explainer            → markdown
+  3. Planner              → markdown
+  4. Diagram              → Mermaid
+  5. Security Auditor     → JSON
 """
 import json
 
-from groq import Groq
+from openai import OpenAI
 
 from app.config import settings
 
-MODEL = "llama-3.1-8b-instant"
-client = Groq(api_key=settings.groq_api_key)
+client = OpenAI(base_url=settings.nvidia_base_url, api_key=settings.nvidia_api_key)
+MODEL = settings.nvidia_model
 
-# Keep prompts token-efficient for free tier (20K TPM limit)
+# Nemotron is a reasoning model — it can be slow. Keep prompts lean.
 _MAX_ASSESSOR_FILES = 8
 _MAX_EXPLAINER_FILES = 10
 _MAX_FILE_CHARS = 400
 
 
-def _chat(system: str, user: str, temperature: float = 0.3) -> str:
+def _chat(system: str, user: str, temperature: float = 0.3, max_tokens: int = 4096) -> str:
+    """
+    Non-streaming chat call to Nemotron. `enable_thinking=False` keeps the
+    response focused on the final answer (no separate reasoning stream to parse).
+    """
     resp = client.chat.completions.create(
         model=MODEL,
         temperature=temperature,
-        max_tokens=4096,
+        top_p=0.95,
+        max_tokens=max_tokens,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
+        extra_body={
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
     )
-    return resp.choices[0].message.content.strip()
+    return (resp.choices[0].message.content or "").strip()
 
 
 def _format_files(files: list[dict], max_files: int, max_chars: int) -> str:
@@ -42,7 +52,26 @@ def _format_files(files: list[dict], max_files: int, max_chars: int) -> str:
     return "\n\n".join(parts)
 
 
-# ── Agent 1: Difficulty Assessor ──────────────────────────────────────────────
+def _extract_json(raw: str) -> str:
+    """Strip markdown fences and reasoning-preamble around a JSON blob."""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        parts = raw.split("```")
+        for p in parts:
+            p = p.strip()
+            if p.startswith("json"):
+                return p[4:].strip()
+            if p.startswith("{") or p.startswith("["):
+                return p
+    # Fallback: slice from first { to last }
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return raw[start : end + 1]
+    return raw
+
+
+# ── Agent 1: Difficulty ────────────────────────────────────────────────────────
 
 _DIFFICULTY_SYSTEM = """You are a senior software engineer assessing codebase difficulty.
 Return ONLY valid JSON (no markdown fences, no extra text) with exactly these keys:
@@ -51,12 +80,7 @@ Return ONLY valid JSON (no markdown fences, no extra text) with exactly these ke
   "reason": "<1-2 sentence explanation>",
   "primary_language": "<language name>",
   "frameworks": ["<framework1>", ...]
-}
-
-Criteria:
-- Beginner: single language, simple scripts, no design patterns, few files
-- Intermediate: multiple modules, some patterns (MVC, REST), moderate complexity
-- Advanced: distributed systems, complex patterns, multiple languages, security layers"""
+}"""
 
 
 def assess_difficulty(ingestion_result: dict) -> dict:
@@ -73,24 +97,18 @@ File samples:
 {sample_files}"""
 
     raw = _chat(_DIFFICULTY_SYSTEM, user_msg)
-
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-
-    return json.loads(raw.strip())
+    return json.loads(_extract_json(raw))
 
 
-# ── Agent 2: Explainer ────────────────────────────────────────────────────────
+# ── Agent 2: Explainer ─────────────────────────────────────────────────────────
 
 _EXPLAINER_SYSTEM = """You are a patient, knowledgeable coding mentor.
-Explain codebases in plain language, adapting your style to the difficulty level:
-- Beginner: simple analogies, avoid jargon, explain what each file does
-- Intermediate: architecture patterns, data flow, module responsibilities
-- Advanced: design decisions, tradeoffs, scalability, non-obvious patterns
+Adapt style to difficulty level:
+- Beginner: simple analogies, avoid jargon
+- Intermediate: architecture patterns, data flow
+- Advanced: design decisions, tradeoffs, scalability
 
-Structure your response as markdown with clear headings."""
+Structure the response as markdown with clear headings."""
 
 
 def explain_codebase(ingestion_result: dict, difficulty: dict) -> str:
@@ -106,16 +124,15 @@ File tree:
 Key file snippets:
 {file_snippets}
 
-Write a plain-language explanation of this codebase for a {difficulty["level"]} level developer."""
+Write a plain-language explanation of this codebase for a {difficulty["level"]} developer."""
 
     return _chat(_EXPLAINER_SYSTEM, user_msg)
 
 
-# ── Agent 3: Planner ──────────────────────────────────────────────────────────
+# ── Agent 3: Planner ───────────────────────────────────────────────────────────
 
-_PLANNER_SYSTEM = """You are a pragmatic software architect.
-Given a codebase explanation, produce a realistic phased development plan.
-Structure: Phase 0 (MVP) → Phase 1 (core features) → Phase 2 (scale/security/polish).
+_PLANNER_SYSTEM = """You are a pragmatic software architect. Produce a phased plan:
+Phase 0 (MVP) → Phase 1 (core features) → Phase 2 (scale/security/polish).
 Each phase must include: Goals, Key tasks, Security considerations.
 Format as clean markdown."""
 
@@ -127,60 +144,48 @@ def generate_plan(ingestion_result: dict, explanation: str) -> str:
 File tree:
 {ingestion_result["file_tree"]}
 
-Generate a phased implementation/improvement plan with security considerations per phase."""
+Generate a phased plan with security considerations per phase."""
 
     return _chat(_PLANNER_SYSTEM, user_msg)
 
 
-# ── Agent 4: Diagram ──────────────────────────────────────────────────────────
+# ── Agent 4: Diagram ───────────────────────────────────────────────────────────
 
-_DIAGRAM_SYSTEM = """You are a software architect. Given a file tree, output a Mermaid diagram
-showing the main modules and how they relate. Use 'graph TD' syntax only.
-Keep it simple — max 12 nodes. Output ONLY the raw Mermaid code, no fences, no explanation."""
+_DIAGRAM_SYSTEM = """You are a software architect. Output a Mermaid diagram of the main modules.
+Use 'graph TD' syntax only. Max 12 nodes. Output ONLY raw Mermaid, no fences, no explanation."""
 
 
 def generate_diagram(ingestion_result: dict) -> str:
     user_msg = f"""File tree:
 {ingestion_result["file_tree"]}
 
-Generate a Mermaid graph TD diagram showing the main modules and their relationships."""
+Generate a Mermaid graph TD diagram of the main modules and relationships."""
 
     raw = _chat(_DIAGRAM_SYSTEM, user_msg, temperature=0.1)
-    # Strip fences if present
     if "```" in raw:
-        parts = raw.split("```")
-        for part in parts:
-            if part.startswith("mermaid"):
-                raw = part[7:].strip()
-                break
-            elif part.strip().startswith("graph"):
-                raw = part.strip()
-                break
+        for part in raw.split("```"):
+            p = part.strip()
+            if p.startswith("mermaid"):
+                return p[7:].strip()
+            if p.startswith("graph"):
+                return p
     return raw.strip()
 
 
-# ── Agent 5: Security Auditor ─────────────────────────────────────────────────
+# ── Agent 5: Security ──────────────────────────────────────────────────────────
 
-_SECURITY_SYSTEM = """You are a security engineer reviewing source code for vulnerabilities.
-Scan for these specific issues and return ONLY valid JSON (no fences, no extra text):
+_SECURITY_SYSTEM = """You are a security engineer. Return ONLY valid JSON (no fences):
 {
   "summary": "<1-2 sentence overall security posture>",
   "risk_level": "Low" | "Medium" | "High" | "Critical",
   "findings": [
-    {
-      "severity": "low" | "medium" | "high" | "critical",
-      "category": "secret" | "injection" | "exposed_env" | "weak_auth" | "other",
-      "file": "<path>",
-      "issue": "<what's wrong>",
-      "fix": "<how to fix it>"
-    }
+    {"severity": "low|medium|high|critical", "category": "secret|injection|exposed_env|weak_auth|other",
+     "file": "<path>", "issue": "<what's wrong>", "fix": "<how to fix>"}
   ]
 }
-
-Look for: hardcoded API keys/passwords/tokens, SQL injection (string concat in queries),
-exposed environment variables in client code, weak password rules, missing auth checks,
-unsafe deserialisation, command injection. Be concrete — quote the file path.
-If nothing concerning is found, return an empty findings array and risk_level "Low"."""
+Look for: hardcoded secrets, SQL injection, exposed env vars in client code, weak password rules,
+missing auth checks, unsafe deserialisation, command injection. If nothing is found, return empty
+findings and risk_level "Low"."""
 
 
 def audit_security(ingestion_result: dict) -> dict:
@@ -192,20 +197,15 @@ Code to audit:
 {files}"""
 
     raw = _chat(_SECURITY_SYSTEM, user_msg, temperature=0.1)
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
     try:
-        return json.loads(raw.strip())
+        return json.loads(_extract_json(raw))
     except json.JSONDecodeError:
         return {"summary": "Security audit parse failed", "risk_level": "Low", "findings": []}
 
 
-# ── Orchestrator ──────────────────────────────────────────────────────────────
+# ── Orchestrator ───────────────────────────────────────────────────────────────
 
 def run_pipeline(ingestion_result: dict) -> dict:
-    """Run all five agents in sequence."""
     difficulty = assess_difficulty(ingestion_result)
     explanation = explain_codebase(ingestion_result, difficulty)
     plan = generate_plan(ingestion_result, explanation)

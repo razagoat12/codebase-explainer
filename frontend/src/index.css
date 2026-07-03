@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The app is dark everywhere — paint the root surfaces black so rubber-band
+   overscroll (macOS) never reveals white, and disable the bounce itself. */
+html,
+body {
+  background-color: #000;
+  overscroll-behavior-y: none;
+}
