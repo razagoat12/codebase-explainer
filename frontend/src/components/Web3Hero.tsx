@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-const NAV_LINKS = ['Product', 'Docs', 'Customers', 'Resources', 'Partners', 'Pricing'];
-const TECH_STACK = ['FastAPI', 'React', 'Groq', 'PostgreSQL', 'Mermaid', 'GitHub'];
+const NAV_LINKS = ['Product', 'Pricing', 'Docs', 'Customers', 'Resources', 'Partners'];
+const TECH_STACK = ['FastAPI', 'React', 'NVIDIA', 'SQLAlchemy', 'Mermaid', 'GitHub'];
 
 export function Web3Hero({ onGetStarted }: { onGetStarted: () => void }) {
   const pillars = [92, 84, 78, 70, 62, 54, 46, 34, 18, 34, 46, 54, 62, 70, 78, 84, 92];

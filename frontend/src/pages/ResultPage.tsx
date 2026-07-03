@@ -2,30 +2,30 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { marked } from 'marked';
 import mermaid from 'mermaid';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, Zap } from 'lucide-react';
 import { api, getToken, type AnalysisResult } from '@/lib/api';
 
-mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+mermaid.initialize({ startOnLoad: false, theme: 'dark' });
 
 const STATUS_BADGE: Record<string, string> = {
-  done: 'bg-green-100 text-green-700',
-  processing: 'bg-blue-100 text-blue-700',
-  pending: 'bg-yellow-100 text-yellow-700',
-  error: 'bg-red-100 text-red-600',
+  done: 'border-emerald-900 bg-emerald-950/60 text-emerald-400',
+  processing: 'border-blue-900 bg-blue-950/60 text-blue-400',
+  pending: 'border-yellow-900 bg-yellow-950/60 text-yellow-400',
+  error: 'border-red-900 bg-red-950/60 text-red-400',
 };
 
 const RISK_BADGE: Record<string, string> = {
-  Critical: 'bg-red-100 text-red-700',
-  High: 'bg-orange-100 text-orange-700',
-  Medium: 'bg-yellow-100 text-yellow-700',
-  Low: 'bg-green-100 text-green-700',
+  Critical: 'border-red-900 bg-red-950/60 text-red-400',
+  High: 'border-orange-900 bg-orange-950/60 text-orange-400',
+  Medium: 'border-yellow-900 bg-yellow-950/60 text-yellow-400',
+  Low: 'border-emerald-900 bg-emerald-950/60 text-emerald-400',
 };
 
 const SEV_BORDER: Record<string, string> = {
-  critical: 'border-red-300 bg-red-50',
-  high: 'border-orange-300 bg-orange-50',
-  medium: 'border-yellow-300 bg-yellow-50',
-  low: 'border-gray-200 bg-gray-50',
+  critical: 'border-red-900 bg-red-950/30',
+  high: 'border-orange-900 bg-orange-950/30',
+  medium: 'border-yellow-900 bg-yellow-950/30',
+  low: 'border-neutral-800 bg-white/5',
 };
 
 const POLL_MESSAGES = [
@@ -64,7 +64,7 @@ function DiagramView({ code }: { code: string }) {
 
   if (failed) {
     return (
-      <pre className="mt-4 overflow-x-auto rounded-lg bg-gray-50 p-4 text-xs text-gray-500">
+      <pre className="mt-4 overflow-x-auto rounded-lg border border-neutral-800 bg-black/40 p-4 font-mono text-xs text-neutral-400">
         {code}
       </pre>
     );
@@ -131,67 +131,70 @@ export function ResultPage() {
   const isError = data?.status === 'error';
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-screen bg-neutral-950 p-6">
       <div className="mx-auto max-w-3xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <button
               onClick={() => navigate('/dashboard')}
-              className="mb-1 block cursor-pointer text-sm text-gray-400 hover:text-gray-600"
+              className="mb-1 block cursor-pointer font-mono text-sm text-neutral-500 transition hover:text-neutral-300"
             >
               ← My Analyses
             </button>
-            <h1 className="text-2xl font-bold text-gray-800">
-              {data?.source_type === 'github' ? 'GitHub Analysis' : 'Local Analysis'}
+            <h1 className="font-mono text-2xl font-bold tracking-tight text-white">
+              &gt; {data?.source_type === 'github' ? 'GitHub Analysis' : 'Local Analysis'}
             </h1>
           </div>
         </div>
 
         {data && (
-          <div className="mb-6 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-center gap-3">
+          <div className="mb-6 rounded-2xl border border-neutral-800 bg-white/5 p-5 backdrop-blur">
+            <div className="flex flex-wrap items-center gap-2">
               <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  STATUS_BADGE[data.status] || 'bg-gray-100 text-gray-600'
+                className={`rounded-full border px-3 py-1 font-mono text-xs font-medium ${
+                  STATUS_BADGE[data.status] || 'border-neutral-800 bg-white/5 text-neutral-400'
                 }`}
               >
                 {data.status}
               </span>
               {data.difficulty && (
-                <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700">
+                <span className="rounded-full border border-neutral-700 bg-white/5 px-3 py-1 font-mono text-xs font-medium text-neutral-300">
                   {data.difficulty}
                 </span>
               )}
               {data.primary_language && (
-                <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                <span className="rounded-full border border-neutral-700 bg-white/5 px-3 py-1 font-mono text-xs font-medium text-neutral-300">
                   {data.primary_language}
                 </span>
               )}
               {data.security && (
                 <span
-                  className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
-                    RISK_BADGE[data.security.risk_level] || 'bg-gray-100 text-gray-600'
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-xs font-medium ${
+                    RISK_BADGE[data.security.risk_level] ||
+                    'border-neutral-800 bg-white/5 text-neutral-400'
                   }`}
                 >
                   <ShieldAlert className="h-3 w-3" /> {data.security.risk_level} Risk
                 </span>
               )}
               {data.served_from_cache && (
-                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                  ⚡ Cached
+                <span className="flex items-center gap-1.5 rounded-full border border-amber-900 bg-amber-950/60 px-3 py-1 font-mono text-xs font-medium text-amber-400">
+                  <Zap className="h-3 w-3" /> Cached
                 </span>
               )}
             </div>
-            <p className="mt-3 truncate text-sm text-gray-500">{data.directory_path}</p>
+            <p className="mt-3 truncate font-mono text-sm text-neutral-500">
+              {data.directory_path}
+            </p>
             {data.difficulty_reason && (
-              <p className="mt-1 text-sm text-gray-500">{data.difficulty_reason}</p>
+              <p className="mt-1 text-sm text-neutral-400">{data.difficulty_reason}</p>
             )}
             {data.frameworks && data.frameworks.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {data.frameworks.map((f) => (
                   <span
                     key={f}
-                    className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600"
+                    className="rounded-full border border-neutral-800 bg-black/40 px-2.5 py-1 font-mono text-xs text-neutral-400"
                   >
                     {f}
                   </span>
@@ -202,17 +205,17 @@ export function ResultPage() {
         )}
 
         {isPolling && (
-          <div className="rounded-2xl border border-gray-100 bg-white p-10 text-center shadow-sm">
-            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-gray-500" />
-            <p className="font-medium text-gray-500">{pollMsg}</p>
-            <p className="mt-1 text-sm text-gray-400">This takes about 30 seconds</p>
+          <div className="rounded-2xl border border-neutral-800 bg-white/5 p-10 text-center backdrop-blur">
+            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-neutral-800 border-t-white" />
+            <p className="font-mono font-medium text-neutral-300">{pollMsg}</p>
+            <p className="mt-1 text-sm text-neutral-500">This takes about 30 seconds</p>
           </div>
         )}
 
         {isError && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
-            <p className="mb-1 font-semibold text-red-700">Analysis failed</p>
-            <p className="text-sm text-red-600">{data?.error_message || 'Unknown error'}</p>
+          <div className="rounded-2xl border border-red-900 bg-red-950/40 p-6">
+            <p className="mb-1 font-mono font-semibold text-red-400">Analysis failed</p>
+            <p className="text-sm text-red-300/80">{data?.error_message || 'Unknown error'}</p>
           </div>
         )}
 
@@ -226,10 +229,10 @@ export function ResultPage() {
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`cursor-pointer rounded-lg px-4 py-2 text-sm font-medium transition ${
+                    className={`cursor-pointer rounded-lg px-4 py-2 font-mono text-sm font-medium transition ${
                       activeTab === tab
-                        ? 'bg-gray-800 text-white'
-                        : 'bg-gray-100 text-gray-500'
+                        ? 'bg-white text-black'
+                        : 'bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-neutral-200'
                     }`}
                   >
                     {tab === 'security'
@@ -241,29 +244,29 @@ export function ResultPage() {
 
             {activeTab === 'explanation' && (
               <div
-                className="prose max-w-none rounded-2xl border border-gray-100 bg-white p-7 shadow-sm"
+                className="prose prose-invert max-w-none rounded-2xl border border-neutral-800 bg-white/5 p-7 backdrop-blur"
                 dangerouslySetInnerHTML={{ __html: marked.parse(data.explanation || '') as string }}
               />
             )}
 
             {activeTab === 'plan' && (
               <div
-                className="prose max-w-none rounded-2xl border border-gray-100 bg-white p-7 shadow-sm"
+                className="prose prose-invert max-w-none rounded-2xl border border-neutral-800 bg-white/5 p-7 backdrop-blur"
                 dangerouslySetInnerHTML={{ __html: marked.parse(data.plan || '') as string }}
               />
             )}
 
             {activeTab === 'diagram' && data.diagram && (
-              <div className="rounded-2xl border border-gray-100 bg-white p-7 shadow-sm">
+              <div className="rounded-2xl border border-neutral-800 bg-white/5 p-7 backdrop-blur">
                 <DiagramView code={data.diagram} />
               </div>
             )}
 
             {activeTab === 'security' && data.security && (
-              <div className="rounded-2xl border border-gray-100 bg-white p-7 shadow-sm">
-                <p className="mb-5 text-gray-700">{data.security.summary}</p>
+              <div className="rounded-2xl border border-neutral-800 bg-white/5 p-7 backdrop-blur">
+                <p className="mb-5 text-neutral-300">{data.security.summary}</p>
                 {data.security.findings.length === 0 ? (
-                  <p className="font-medium text-green-700">
+                  <p className="font-mono font-medium text-emerald-400">
                     No critical security issues detected.
                   </p>
                 ) : (
@@ -272,18 +275,18 @@ export function ResultPage() {
                       <div
                         key={i}
                         className={`rounded-r-lg border-l-4 p-4 ${
-                          SEV_BORDER[f.severity] || 'border-gray-200 bg-gray-50'
+                          SEV_BORDER[f.severity] || 'border-neutral-800 bg-white/5'
                         }`}
                       >
-                        <div className="mb-1 flex items-start justify-between">
-                          <span className="text-xs font-semibold uppercase text-gray-600">
+                        <div className="mb-1 flex items-start justify-between gap-3">
+                          <span className="font-mono text-xs font-semibold uppercase text-neutral-400">
                             {f.severity} · {f.category}
                           </span>
-                          <span className="font-mono text-xs text-gray-500">{f.file}</span>
+                          <span className="font-mono text-xs text-neutral-500">{f.file}</span>
                         </div>
-                        <p className="mb-1 text-sm font-medium text-gray-800">{f.issue}</p>
-                        <p className="text-sm text-gray-600">
-                          <span className="font-semibold">Fix:</span> {f.fix}
+                        <p className="mb-1 text-sm font-medium text-neutral-200">{f.issue}</p>
+                        <p className="text-sm text-neutral-400">
+                          <span className="font-semibold text-neutral-300">Fix:</span> {f.fix}
                         </p>
                       </div>
                     ))}

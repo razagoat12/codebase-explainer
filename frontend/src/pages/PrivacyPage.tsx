@@ -1,5 +1,13 @@
 import { Link } from 'react-router-dom';
 
+function slugify(heading: string): string {
+  return heading
+    .replace(/^\d+\.\s*/, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 const SECTIONS = [
   {
     heading: '1. Information we collect',
@@ -94,17 +102,41 @@ export function PrivacyPage() {
           &gt; Privacy Policy
         </h1>
         <p className="mt-2 font-mono text-xs text-neutral-500">Effective date: July 3, 2026</p>
-        <p className="mt-4 text-sm leading-relaxed text-neutral-400">
-          Codebase Explainer (&ldquo;we&rdquo;, &ldquo;us&rdquo;, the &ldquo;service&rdquo;)
-          analyzes source code you submit and returns AI-generated explanations, plans, diagrams,
-          and security findings. This policy explains what we collect, why, and the choices you
-          have. The short version: we keep as little as possible, your raw code is never stored,
-          and we don&rsquo;t sell anything about you.
-        </p>
+
+        <div className="mt-5 rounded-xl border border-neutral-800 bg-white/5 p-5">
+          <p className="mb-1 font-mono text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            TL;DR
+          </p>
+          <p className="text-sm leading-relaxed text-neutral-300">
+            Codebase Explainer (&ldquo;we&rdquo;, &ldquo;us&rdquo;, the &ldquo;service&rdquo;)
+            analyzes source code you submit and returns AI-generated explanations, plans,
+            diagrams, and security findings. This policy explains what we collect, why, and the
+            choices you have. The short version: we keep as little as possible, your raw code is
+            never stored, and we don&rsquo;t sell anything about you.
+          </p>
+        </div>
+
+        <nav aria-label="Table of contents" className="mt-8 rounded-xl border border-neutral-800 p-5">
+          <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            On this page
+          </p>
+          <ol className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
+            {SECTIONS.map((s) => (
+              <li key={s.heading}>
+                <a
+                  href={`#${slugify(s.heading)}`}
+                  className="text-sm text-neutral-400 transition hover:text-white hover:underline"
+                >
+                  {s.heading}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
 
         <div className="mt-10 space-y-8">
           {SECTIONS.map((s) => (
-            <section key={s.heading}>
+            <section key={s.heading} id={slugify(s.heading)} className="scroll-mt-8">
               <h2 className="mb-3 font-mono text-sm font-semibold text-white">{s.heading}</h2>
               <div className="space-y-3">
                 {s.paragraphs.map((p, i) => (
@@ -116,6 +148,16 @@ export function PrivacyPage() {
             </section>
           ))}
         </div>
+
+        <p className="mt-10 border-t border-neutral-900 pt-6 text-center text-xs text-neutral-600">
+          Questions about this policy?{' '}
+          <a
+            href="mailto:privacy@codebase-explainer.app"
+            className="underline transition hover:text-neutral-400"
+          >
+            privacy@codebase-explainer.app
+          </a>
+        </p>
       </div>
     </div>
   );

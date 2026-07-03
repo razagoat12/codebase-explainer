@@ -1,5 +1,7 @@
 """
-Five-agent pipeline powered by NVIDIA Nemotron (OpenAI-compatible endpoint):
+Five-agent pipeline powered by NVIDIA Nemotron (OpenAI-compatible endpoint),
+with an automatic fallback to a secondary model (Kimi K2 via the same NVIDIA
+endpoint) if the primary call raises — timeout, rate limit, or outage:
   1. Difficulty Assessor  → JSON
   2. Explainer            → markdown
   3. Planner              → markdown
@@ -7,13 +9,25 @@ Five-agent pipeline powered by NVIDIA Nemotron (OpenAI-compatible endpoint):
   5. Security Auditor     → JSON
 """
 import json
+import logging
 
 from openai import OpenAI
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 client = OpenAI(base_url=settings.nvidia_base_url, api_key=settings.nvidia_api_key)
 MODEL = settings.nvidia_model
+
+# Fallback client is only constructed if a key is configured — keeps the
+# primary path free of overhead when no fallback is set up.
+_fallback_client = (
+    OpenAI(base_url=settings.fallback_base_url, api_key=settings.fallback_api_key)
+    if settings.fallback_api_key
+    else None
+)
+FALLBACK_MODEL = settings.fallback_model
 
 # Nemotron is a reasoning model — it can be slow. Keep prompts lean.
 _MAX_ASSESSOR_FILES = 8
@@ -25,21 +39,40 @@ def _chat(system: str, user: str, temperature: float = 0.3, max_tokens: int = 40
     """
     Non-streaming chat call to Nemotron. `enable_thinking=False` keeps the
     response focused on the final answer (no separate reasoning stream to parse).
+    Falls back to a secondary model if the primary call raises and a fallback
+    client is configured.
     """
-    resp = client.chat.completions.create(
-        model=MODEL,
-        temperature=temperature,
-        top_p=0.95,
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        extra_body={
-            "chat_template_kwargs": {"enable_thinking": False},
-        },
-    )
-    return (resp.choices[0].message.content or "").strip()
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+    try:
+        resp = client.chat.completions.create(
+            model=MODEL,
+            temperature=temperature,
+            top_p=0.95,
+            max_tokens=max_tokens,
+            messages=messages,
+            extra_body={
+                "chat_template_kwargs": {"enable_thinking": False},
+            },
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception as exc:
+        if not _fallback_client:
+            raise
+        logger.warning(
+            "Primary model call failed (%s) — falling back to %s", exc, FALLBACK_MODEL
+        )
+        resp = _fallback_client.chat.completions.create(
+            model=FALLBACK_MODEL,
+            temperature=temperature,
+            top_p=1.0,
+            max_tokens=max_tokens,
+            messages=messages,
+        )
+        return (resp.choices[0].message.content or "").strip()
 
 
 def _format_files(files: list[dict], max_files: int, max_chars: int) -> str:

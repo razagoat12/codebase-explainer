@@ -32,11 +32,19 @@ const PAGES: Record<string, PageContent> = {
       },
       {
         heading: 'API access',
-        body: 'The same REST API that powers this site is available at /docs (OpenAPI). Authenticate with your JWT bearer token and call POST /analyze/local or POST /analyze/github directly.',
+        body: 'The same REST API that powers this site is fully documented via OpenAPI on the backend itself (the interactive schema lives at the API host’s own /docs route, separate from this marketing site). Authenticate with your JWT bearer token and call POST /analyze/local or POST /analyze/github directly.',
       },
       {
         heading: 'Limits',
         body: 'Free accounts include 10 analyses per month. Files over 500 KB are skipped and total ingested content is capped at 2 MB per analysis to keep results fast.',
+      },
+      {
+        heading: 'Authentication',
+        body: 'Register with an email and password (min. 8 characters, bcrypt-hashed). Log in to receive a JWT bearer token, valid for 24 hours. Send it as Authorization: Bearer <token> on every /analyze and /auth/me request — no cookies, no sessions to manage.',
+      },
+      {
+        heading: 'Understanding your results',
+        body: 'Each analysis returns: a difficulty level with a one-line reason, a plain-language explanation, a phased MVP → Phase 1 → Phase 2 plan, a Mermaid architecture diagram, and a security report with a risk_level and a findings[] list (severity, category, file, issue, and fix per finding).',
       },
     ],
   },
