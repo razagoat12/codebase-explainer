@@ -17,6 +17,9 @@ const InfoPage = lazy(() =>
 const PrivacyPage = lazy(() =>
   import('@/pages/PrivacyPage').then((m) => ({ default: m.PrivacyPage }))
 );
+const TermsPage = lazy(() =>
+  import('@/pages/TermsPage').then((m) => ({ default: m.TermsPage }))
+);
 
 const INFO_SLUGS = ['product', 'docs', 'customers', 'resources', 'partners', 'pricing'];
 
@@ -66,6 +69,14 @@ function App() {
               element={
                 <Suspense fallback={lazyFallback}>
                   <PrivacyPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/terms"
+              element={
+                <Suspense fallback={lazyFallback}>
+                  <TermsPage />
                 </Suspense>
               }
             />

@@ -1,3 +1,4 @@
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import JWTError
 from pydantic import BaseModel, EmailStr
@@ -8,16 +9,37 @@ from datetime import datetime, timedelta, timezone
 
 from app.auth.models import TIER_QUOTAS, PlanTier, User
 from app.auth.utils import create_access_token, decode_token, hash_password, verify_password
+from app.config import settings
 from app.database import get_db
 from fastapi.security import OAuth2PasswordBearer
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+async def _verify_turnstile(token: str | None) -> None:
+    """Abuse guard on registration. A no-op unless TURNSTILE_SECRET_KEY is
+    configured, so registration works with no CAPTCHA in local dev / until the
+    operator sets up a Cloudflare Turnstile site."""
+    if not settings.turnstile_secret_key:
+        return
+    if not token:
+        raise HTTPException(status_code=400, detail="Missing CAPTCHA verification")
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            TURNSTILE_VERIFY_URL,
+            data={"secret": settings.turnstile_secret_key, "response": token},
+        )
+    if not resp.json().get("success"):
+        raise HTTPException(status_code=400, detail="CAPTCHA verification failed")
+
 
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
+    turnstile_token: str | None = None
 
 
 class LoginRequest(BaseModel):
@@ -45,12 +67,14 @@ class MeResponse(BaseModel):
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    existing = await db.scalar(select(User).where(User.email == body.email))
+    await _verify_turnstile(body.turnstile_token)
+    email = body.email.lower()
+    existing = await db.scalar(select(User).where(User.email == email))
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     if len(body.password) < 8:
         raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
-    user = User(email=body.email, hashed_password=hash_password(body.password))
+    user = User(email=email, hashed_password=hash_password(body.password))
     db.add(user)
     await db.commit()
     await db.refresh(user)
@@ -59,7 +83,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    user = await db.scalar(select(User).where(User.email == body.email))
+    user = await db.scalar(select(User).where(User.email == body.email.lower()))
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return TokenResponse(access_token=create_access_token(user.id))

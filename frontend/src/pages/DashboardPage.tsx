@@ -115,7 +115,7 @@ export function DashboardPage() {
                     : 'border-neutral-800 bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-neutral-200'
                 }`}
               >
-                {f} {counts[f] ? `(${counts[f]})` : f === 'all' ? '(0)' : ''}
+                {f} ({counts[f] ?? 0})
               </button>
             ))}
           </motion.div>

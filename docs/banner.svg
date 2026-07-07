@@ -1,0 +1,85 @@
+<svg width="1280" height="360" viewBox="0 0 1280 360" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="glow1" cx="50%" cy="55%" r="60%">
+      <stop offset="0%" stop-color="#fca69a" stop-opacity="0.45"/>
+      <stop offset="27%" stop-color="#d64c52" stop-opacity="0.40"/>
+      <stop offset="55%" stop-color="#272843" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="1"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="12%" cy="0%" r="70%">
+      <stop offset="0%" stop-color="#ffc1ab" stop-opacity="0.55"/>
+      <stop offset="30%" stop-color="#e96d63" stop-opacity="0.40"/>
+      <stop offset="65%" stop-color="#30181c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow3" cx="88%" cy="18%" r="60%">
+      <stop offset="0%" stop-color="#5870ff" stop-opacity="0.35"/>
+      <stop offset="55%" stop-color="#10121c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.2"/>
+      <stop offset="45%" stop-color="#000000" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="titleFade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#dcdce6"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="360" fill="#000000"/>
+  <rect width="1280" height="360" fill="url(#glow1)"/>
+  <rect width="1280" height="360" fill="url(#glow2)"/>
+  <rect width="1280" height="360" fill="url(#glow3)"/>
+  <rect width="1280" height="360" fill="url(#fade)"/>
+
+  <!-- faint grid lines for the "terminal" texture used across the app -->
+  <g opacity="0.08" stroke="#ffffff" stroke-width="1">
+    <line x1="160" y1="0" x2="160" y2="360"/>
+    <line x1="320" y1="0" x2="320" y2="360"/>
+    <line x1="480" y1="0" x2="480" y2="360"/>
+    <line x1="640" y1="0" x2="640" y2="360"/>
+    <line x1="800" y1="0" x2="800" y2="360"/>
+    <line x1="960" y1="0" x2="960" y2="360"/>
+    <line x1="1120" y1="0" x2="1120" y2="360"/>
+  </g>
+
+  <!-- pill badge -->
+  <rect x="480" y="46" width="320" height="30" rx="15" fill="#ffffff" fill-opacity="0.06" stroke="#ffffff" stroke-opacity="0.18"/>
+  <circle cx="500" cy="61" r="3.5" fill="#ffffff" fill-opacity="0.7"/>
+  <text x="514" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" letter-spacing="2" fill="#ffffffb3">AI CODE TOOLKIT</text>
+
+  <!-- title -->
+  <text x="640" y="150" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="700" font-size="64" fill="url(#titleFade)">Codebase Explainer</text>
+
+  <!-- tagline -->
+  <text x="640" y="192" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="19" fill="#ffffffcc">Understand, plan, and secure any codebase &#8212; in plain language</text>
+
+  <!-- tech pills -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#ffffffb3" letter-spacing="1.5">
+    <text x="290" y="260" text-anchor="middle">FASTAPI</text>
+    <text x="430" y="260" text-anchor="middle">REACT</text>
+    <text x="555" y="260" text-anchor="middle">TYPESCRIPT</text>
+    <text x="700" y="260" text-anchor="middle">NVIDIA NEMOTRON</text>
+    <text x="870" y="260" text-anchor="middle">POSTGRES</text>
+    <text x="1000" y="260" text-anchor="middle">MERMAID</text>
+  </g>
+  <g opacity="0.35" stroke="#ffffff">
+    <line x1="355" y1="248" x2="355" y2="266"/>
+    <line x1="495" y1="248" x2="495" y2="266"/>
+    <line x1="625" y1="248" x2="625" y2="266"/>
+    <line x1="790" y1="248" x2="790" y2="266"/>
+    <line x1="925" y1="248" x2="925" y2="266"/>
+  </g>
+
+  <!-- bottom "skyline" silhouette, echoing the hero section on the actual homepage -->
+  <g fill="#000000">
+    <rect x="0" y="330" width="26" height="30"/>
+    <rect x="30" y="318" width="26" height="42"/>
+    <rect x="60" y="336" width="26" height="24"/>
+    <rect x="90" y="308" width="26" height="52"/>
+    <rect x="1164" y="308" width="26" height="52"/>
+    <rect x="1194" y="336" width="26" height="24"/>
+    <rect x="1224" y="318" width="26" height="42"/>
+    <rect x="1254" y="330" width="26" height="30"/>
+  </g>
+  <rect x="0" y="300" width="1280" height="60" fill="url(#fade)" transform="rotate(180 640 330)"/>
+</svg>

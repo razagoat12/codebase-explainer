@@ -7,7 +7,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analysis.agents import run_pipeline
+from app.analysis.agents import (
+    assess_difficulty,
+    audit_security,
+    explain_codebase,
+    generate_diagram,
+    generate_plan,
+)
 from app.analysis.github import ingest_github, parse_github_url
 from app.analysis.ingestion import compute_content_hash, ingest_directory
 from app.analysis.models import Analysis, AnalysisStatus
@@ -27,6 +33,34 @@ def _dispatch(background_tasks: BackgroundTasks, analysis_id: str, source: str, 
 
 # Overridable in tests
 _session_factory = AsyncSessionLocal
+
+# Number of agents the pipeline reports progress for: difficulty, explanation,
+# plan, diagram, security.
+TOTAL_PIPELINE_STAGES = 5
+
+# Hard per-stage ceiling. The OpenAI SDK's own `timeout` covers the well-behaved
+# case (and triggers the fallback model), but against an endpoint that trickles
+# bytes on a kept-alive connection the read timeout can be repeatedly reset and
+# a single call can hang far past its budget — observed live. This asyncio-level
+# wait_for is independent of SDK/transport behaviour and guarantees a stuck stage
+# surfaces as an error instead of leaving the analysis "processing" forever.
+# Budget = primary (60s) + fallback (60s) + slack.
+_STAGE_TIMEOUT_SECONDS = 140.0
+
+
+async def _agent(fn, *args):
+    """Run one agent in a worker thread with a hard timeout. On timeout the
+    orphaned thread finishes on its own (blocked on network I/O that will
+    eventually return); we stop waiting and let the caller fail the analysis."""
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(fn, *args), timeout=_STAGE_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        raise RuntimeError(
+            f"Analysis agent '{fn.__name__}' timed out after {int(_STAGE_TIMEOUT_SECONDS)}s"
+        )
+
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
 
@@ -64,6 +98,7 @@ class SecurityReport(BaseModel):
 class AnalysisResult(BaseModel):
     id: str
     status: str
+    progress: int
     directory_path: str
     source_type: str
     difficulty: str | None
@@ -104,7 +139,57 @@ def _copy_cached_results(target: Analysis, source: Analysis) -> None:
     target.content_hash = source.content_hash
     target.served_from_cache = True
     target.status = AnalysisStatus.done
+    target.progress = TOTAL_PIPELINE_STAGES
     target.completed_at = datetime.now(timezone.utc)
+
+
+async def _run_pipeline_with_progress(ingestion: dict, analysis: Analysis, db: AsyncSession) -> dict:
+    """Run the five agents, executing the two independent ones (diagram and
+    security — they need only the ingested files) concurrently with the
+    difficulty → explanation → plan chain. Critical path drops from 5 sequential
+    model calls to 3. A completed-stage counter is committed as each agent
+    finishes so the client can render real progress.
+
+    All three tracks share one AsyncSession, which is *not* safe for concurrent
+    use, so every DB touch is serialised behind `progress_lock`. The agent calls
+    themselves run in worker threads via `to_thread` and never touch the session.
+    """
+    progress_lock = asyncio.Lock()
+
+    async def stage_done() -> None:
+        async with progress_lock:
+            analysis.progress = (analysis.progress or 0) + 1
+            await db.commit()
+
+    async def explain_track():
+        difficulty = await _agent(assess_difficulty, ingestion)
+        await stage_done()
+        explanation = await _agent(explain_codebase, ingestion, difficulty)
+        await stage_done()
+        plan = await _agent(generate_plan, ingestion, explanation)
+        await stage_done()
+        return difficulty, explanation, plan
+
+    async def diagram_track():
+        diagram = await _agent(generate_diagram, ingestion)
+        await stage_done()
+        return diagram
+
+    async def security_track():
+        security = await _agent(audit_security, ingestion)
+        await stage_done()
+        return security
+
+    (difficulty, explanation, plan), diagram, security = await asyncio.gather(
+        explain_track(), diagram_track(), security_track()
+    )
+    return {
+        "difficulty": difficulty,
+        "explanation": explanation,
+        "plan": plan,
+        "diagram": diagram,
+        "security": security,
+    }
 
 
 async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None:
@@ -115,6 +200,7 @@ async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None
             return
 
         analysis.status = AnalysisStatus.processing
+        analysis.progress = 0
         await db.commit()
 
         try:
@@ -130,15 +216,12 @@ async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None
             cached = await _find_cached(db, content_hash)
             if cached and cached.id != analysis.id:
                 _copy_cached_results(analysis, cached)
-                # Increment user quota even for cached results (still costs us nothing but a DB read)
-                user = await db.get(User, analysis.user_id)
-                if user:
-                    user.monthly_usage += 1
                 await db.commit()
                 return
 
-            # Cache miss — run full pipeline
-            result = await asyncio.to_thread(run_pipeline, ingestion)
+            # Cache miss — run the pipeline (diagram + security run in parallel
+            # with the difficulty → explanation → plan chain)
+            result = await _run_pipeline_with_progress(ingestion, analysis, db)
 
             difficulty = result["difficulty"]
             analysis.difficulty_level = difficulty.get("level")
@@ -154,11 +237,8 @@ async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None
             analysis.security_risk = sec.get("risk_level")
 
             analysis.status = AnalysisStatus.done
+            analysis.progress = TOTAL_PIPELINE_STAGES
             analysis.completed_at = datetime.now(timezone.utc)
-
-            user = await db.get(User, analysis.user_id)
-            if user:
-                user.monthly_usage += 1
 
         except Exception as exc:
             analysis.status = AnalysisStatus.error
@@ -182,6 +262,7 @@ async def analyze_local(
 
     analysis = Analysis(user_id=current_user.id, directory_path=body.directory_path, source_type="local")
     db.add(analysis)
+    current_user.monthly_usage += 1
     await db.commit()
     await db.refresh(analysis)
 
@@ -208,6 +289,7 @@ async def analyze_github(
 
     analysis = Analysis(user_id=current_user.id, directory_path=body.repo_url, source_type="github")
     db.add(analysis)
+    current_user.monthly_usage += 1
     await db.commit()
     await db.refresh(analysis)
 
@@ -268,6 +350,7 @@ async def get_analysis(
     return AnalysisResult(
         id=analysis.id,
         status=analysis.status,
+        progress=getattr(analysis, "progress", 0) or 0,
         directory_path=analysis.directory_path,
         source_type=getattr(analysis, "source_type", "local"),
         difficulty=analysis.difficulty_level,

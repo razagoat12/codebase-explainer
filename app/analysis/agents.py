@@ -1,33 +1,90 @@
 """
 Five-agent pipeline powered by NVIDIA Nemotron (OpenAI-compatible endpoint),
-with an automatic fallback to a secondary model (Kimi K2 via the same NVIDIA
-endpoint) if the primary call raises — timeout, rate limit, or outage:
+with an automatic fallback chain — Kimi K2 → GLM 5.2 → DeepSeek V4, each
+independently optional — tried in order once the primary NVIDIA key pool is
+exhausted or rate-limited, or the primary call otherwise raises:
   1. Difficulty Assessor  → JSON
   2. Explainer            → markdown
   3. Planner              → markdown
   4. Diagram              → Mermaid
   5. Security Auditor     → JSON
 """
+import itertools
 import json
 import logging
+import threading
+from dataclasses import dataclass, field
 
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-client = OpenAI(base_url=settings.nvidia_base_url, api_key=settings.nvidia_api_key)
+# The SDK's default timeout is 10 minutes; with multiple agent calls per
+# analysis, a slow/unresponsive upstream could leave a single analysis
+# "processing" (and the fallback model never tried) for the better part of an
+# hour. Cap each call so a stuck request fails fast and falls back instead.
+_REQUEST_TIMEOUT_SECONDS = 60.0
+
+# One client per configured NVIDIA key (settings.nvidia_api_key_pool is just
+# [nvidia_api_key] unless NVIDIA_API_KEYS adds more). Each free key has its own
+# per-minute rate limit, so pooling multiple keys multiplies how many analyses
+# can run concurrently before anything 429s — see PLAN.md's key-pool section.
+_client_pool = [
+    OpenAI(base_url=settings.nvidia_base_url, api_key=key, timeout=_REQUEST_TIMEOUT_SECONDS)
+    for key in settings.nvidia_api_key_pool
+]
 MODEL = settings.nvidia_model
 
-# Fallback client is only constructed if a key is configured — keeps the
-# primary path free of overhead when no fallback is set up.
-_fallback_client = (
-    OpenAI(base_url=settings.fallback_base_url, api_key=settings.fallback_api_key)
-    if settings.fallback_api_key
-    else None
-)
-FALLBACK_MODEL = settings.fallback_model
+_pool_lock = threading.Lock()
+_pool_counter = itertools.count()
+
+
+def _client_rotation() -> list[OpenAI]:
+    """Pool clients starting from a different offset each call (round-robin),
+    so load spreads across keys instead of always hammering the first one."""
+    with _pool_lock:
+        start = next(_pool_counter) % len(_client_pool)
+    return _client_pool[start:] + _client_pool[:start]
+
+
+@dataclass
+class _FallbackBackend:
+    client: OpenAI
+    model: str
+    top_p: float
+    extra_body: dict | None = field(default=None)
+
+
+def _fallback_backend(api_key: str, base_url: str, model: str, top_p: float, extra_body: dict | None = None):
+    """Build a fallback backend only if its key is configured — keeps the
+    primary path free of overhead when a given fallback isn't set up."""
+    if not api_key:
+        return None
+    client = OpenAI(base_url=base_url, api_key=api_key, timeout=_REQUEST_TIMEOUT_SECONDS)
+    return _FallbackBackend(client=client, model=model, top_p=top_p, extra_body=extra_body)
+
+
+# Tried in this order once the primary NVIDIA pool is exhausted/rate-limited.
+# Each model expects its own reasoning-control param name (Nemotron uses
+# "enable_thinking", DeepSeek uses "thinking", GLM takes neither) — preserved
+# per-backend rather than assumed identical across providers.
+_fallback_backends: list[_FallbackBackend] = [
+    b
+    for b in (
+        _fallback_backend(settings.fallback_api_key, settings.fallback_base_url, settings.fallback_model, top_p=1.0),
+        _fallback_backend(settings.glm_api_key, settings.glm_base_url, settings.glm_model, top_p=1.0),
+        _fallback_backend(
+            settings.deepseek_api_key,
+            settings.deepseek_base_url,
+            settings.deepseek_model,
+            top_p=0.95,
+            extra_body={"chat_template_kwargs": {"thinking": False}},
+        ),
+    )
+    if b is not None
+]
 
 # Nemotron is a reasoning model — it can be slow. Keep prompts lean.
 _MAX_ASSESSOR_FILES = 8
@@ -39,40 +96,66 @@ def _chat(system: str, user: str, temperature: float = 0.3, max_tokens: int = 40
     """
     Non-streaming chat call to Nemotron. `enable_thinking=False` keeps the
     response focused on the final answer (no separate reasoning stream to parse).
-    Falls back to a secondary model if the primary call raises and a fallback
-    client is configured.
+
+    On a 429 (rate limit), tries the next key in the pool before giving up on
+    the primary model — a rate limit on one key says nothing about the model's
+    quality, so it doesn't warrant dropping to a fallback model. Any other
+    error (auth, network, timeout) goes straight to the fallback chain instead
+    of burning through the whole pool for what's probably a systemic issue.
+
+    Once the primary pool is exhausted ("queue is full") or a non-rate-limit
+    error occurs, walks _fallback_backends in order (Kimi → GLM 5.2 →
+    DeepSeek V4, each optional) and returns the first one that succeeds.
+    Raises the last error only if every configured backend fails.
     """
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
 
-    try:
-        resp = client.chat.completions.create(
-            model=MODEL,
-            temperature=temperature,
-            top_p=0.95,
-            max_tokens=max_tokens,
-            messages=messages,
-            extra_body={
-                "chat_template_kwargs": {"enable_thinking": False},
-            },
-        )
-        return (resp.choices[0].message.content or "").strip()
-    except Exception as exc:
-        if not _fallback_client:
-            raise
-        logger.warning(
-            "Primary model call failed (%s) — falling back to %s", exc, FALLBACK_MODEL
-        )
-        resp = _fallback_client.chat.completions.create(
-            model=FALLBACK_MODEL,
-            temperature=temperature,
-            top_p=1.0,
-            max_tokens=max_tokens,
-            messages=messages,
-        )
-        return (resp.choices[0].message.content or "").strip()
+    last_exc: Exception | None = None
+    for pool_client in _client_rotation():
+        try:
+            resp = pool_client.chat.completions.create(
+                model=MODEL,
+                temperature=temperature,
+                top_p=0.95,
+                max_tokens=max_tokens,
+                messages=messages,
+                extra_body={
+                    "chat_template_kwargs": {"enable_thinking": False},
+                },
+            )
+            return (resp.choices[0].message.content or "").strip()
+        except RateLimitError as exc:
+            last_exc = exc
+            logger.warning("NVIDIA key rate-limited (%s) — trying next key in pool", exc)
+            continue
+        except Exception as exc:
+            last_exc = exc
+            break
+
+    for backend in _fallback_backends:
+        try:
+            logger.warning(
+                "Primary model pool exhausted (%s) — trying fallback %s", last_exc, backend.model
+            )
+            kwargs = dict(
+                model=backend.model,
+                temperature=temperature,
+                top_p=backend.top_p,
+                max_tokens=max_tokens,
+                messages=messages,
+            )
+            if backend.extra_body:
+                kwargs["extra_body"] = backend.extra_body
+            resp = backend.client.chat.completions.create(**kwargs)
+            return (resp.choices[0].message.content or "").strip()
+        except Exception as exc:
+            last_exc = exc
+            continue
+
+    raise last_exc
 
 
 def _format_files(files: list[dict], max_files: int, max_chars: int) -> str:
@@ -236,18 +319,6 @@ Code to audit:
         return {"summary": "Security audit parse failed", "risk_level": "Low", "findings": []}
 
 
-# ── Orchestrator ───────────────────────────────────────────────────────────────
-
-def run_pipeline(ingestion_result: dict) -> dict:
-    difficulty = assess_difficulty(ingestion_result)
-    explanation = explain_codebase(ingestion_result, difficulty)
-    plan = generate_plan(ingestion_result, explanation)
-    diagram = generate_diagram(ingestion_result)
-    security = audit_security(ingestion_result)
-    return {
-        "difficulty": difficulty,
-        "explanation": explanation,
-        "plan": plan,
-        "diagram": diagram,
-        "security": security,
-    }
+# The five agents above are orchestrated by app.analysis.routes, which runs the
+# two independent ones (diagram, security) concurrently with the
+# difficulty → explanation → plan chain and reports per-stage progress.

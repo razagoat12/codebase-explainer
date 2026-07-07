@@ -31,6 +31,7 @@ export type SecurityReport = {
 };
 
 export type AnalysisResult = AnalysisSummary & {
+  progress: number;
   difficulty: string | null;
   difficulty_reason: string | null;
   primary_language: string | null;
@@ -98,10 +99,10 @@ async function request<T>(
 }
 
 export const api = {
-  register: (email: string, password: string) =>
+  register: (email: string, password: string, turnstileToken?: string) =>
     request<AuthResponse>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, turnstile_token: turnstileToken }),
     }),
 
   login: (email: string, password: string) =>

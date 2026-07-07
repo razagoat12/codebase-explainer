@@ -14,6 +14,13 @@ from app.auth.routes import router as auth_router
 from app.config import settings
 from app.database import init_db
 
+# Error tracking — a no-op until SENTRY_DSN is set (e.g. local dev), so this
+# never requires a Sentry account to run the app.
+if settings.sentry_dsn:
+    import sentry_sdk
+
+    sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=0.1, send_default_pii=False)
+
 limiter = Limiter(key_func=get_remote_address)
 
 
@@ -25,7 +32,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Codebase Explainer",
-    description="Analyse any codebase and get a plain-language explanation powered by Groq.",
+    description="Analyse any codebase and get a plain-language explanation powered by NVIDIA Nemotron.",
     version="1.0.0",
     lifespan=lifespan,
 )

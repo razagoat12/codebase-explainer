@@ -69,6 +69,27 @@ async def test_ingestion_path_traversal(client: AsyncClient, auth_headers):
 
 
 @pytest.mark.asyncio
+async def test_analyze_local_rejects_system_directory(client: AsyncClient, auth_headers):
+    """A directly-supplied absolute system path (no traversal needed) must
+    also be rejected — the previous check only validated existence, so any
+    authenticated user could point /analyze/local at /etc, /Users, etc. and
+    have the contents shipped to the LLM and stored in their analysis."""
+    resp = await client.post(
+        "/analyze/local",
+        json={"directory_path": "/etc"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 400
+
+    resp = await client.post(
+        "/analyze/local",
+        json={"directory_path": "/Users"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_analyze_local_completes_with_full_pipeline(client: AsyncClient, auth_headers, tmp_path):
     (tmp_path / "main.py").write_text("print('hello')")
     submit = await client.post(
@@ -90,6 +111,9 @@ async def test_analyze_local_completes_with_full_pipeline(client: AsyncClient, a
     assert data["diagram"].startswith("graph TD")
     assert data["security"]["risk_level"] == "Low"
     assert data["served_from_cache"] is False
+    # All five agents ran to completion (diagram + security execute in parallel
+    # with the difficulty→explanation→plan chain; order must not affect the count)
+    assert data["progress"] == 5
 
 
 @pytest.mark.asyncio
@@ -127,3 +151,30 @@ async def test_github_invalid_url_rejected(client: AsyncClient, auth_headers):
         headers=auth_headers,
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_github_non_github_host_rejected(client: AsyncClient, auth_headers):
+    """A URL shaped like <host>/<owner>/<repo> but on a non-GitHub host must
+    be rejected instead of silently treated as a GitHub owner/repo pair."""
+    resp = await client.post(
+        "/analyze/github",
+        json={"repo_url": "https://gitlab.com/owner/repo"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_quota_consumed_at_submission_not_completion(client: AsyncClient, auth_headers, tmp_path):
+    """monthly_usage must increment as soon as a request is accepted, not
+    after the background pipeline finishes — otherwise concurrent submissions
+    made before any of them complete could all pass the quota check."""
+    (tmp_path / "main.py").write_text("print('hi')")
+    resp = await client.post(
+        "/analyze/local", json={"directory_path": str(tmp_path)}, headers=auth_headers
+    )
+    assert resp.status_code == 202
+
+    me = await client.get("/auth/me", headers=auth_headers)
+    assert me.json()["monthly_usage"] == 1

@@ -27,9 +27,12 @@ GITHUB_API = "https://api.github.com"
 
 def parse_github_url(url: str) -> tuple[str, str]:
     """Extract owner and repo from a GitHub URL. Returns (owner, repo)."""
-    path = urlparse(url).path.strip("/")
+    parsed = urlparse(url)
+    if parsed.netloc.lower() not in ("github.com", "www.github.com"):
+        raise ValueError(f"Not a github.com URL: {url}")
+    path = parsed.path.strip("/")
     parts = path.split("/")
-    if len(parts) < 2:
+    if len(parts) < 2 or not parts[0] or not parts[1]:
         raise ValueError(f"Cannot parse GitHub URL: {url}")
     return parts[0], parts[1].removesuffix(".git")
 

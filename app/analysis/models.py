@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -31,6 +31,9 @@ class Analysis(Base):
     diagram: Mapped[str | None] = mapped_column(Text, nullable=True)
     security_findings: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
     security_risk: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Count of completed pipeline stages (0–5), written as each agent finishes
+    # so the client can show real progress instead of a fixed spinner.
+    progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     source_type: Mapped[str] = mapped_column(String, default="local", nullable=False)
     content_hash: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     served_from_cache: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

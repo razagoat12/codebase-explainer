@@ -279,6 +279,7 @@ export function HomePage() {
               Three steps from source to plain-language explanation.
             </p>
 
+            <form onSubmit={handleAnalysisSubmit}>
             <ol className="space-y-5">
               <li className="flex gap-3">
                 <span
@@ -336,22 +337,26 @@ export function HomePage() {
                 <div className="min-w-0 flex-1">
                   <p className="mb-2 font-mono text-xs font-medium text-neutral-300">
                     {source === 'local'
-                      ? 'Point us at a directory'
+                      ? 'Path on the server host'
                       : 'Paste a public repo URL'}
                   </p>
-                  <form onSubmit={handleAnalysisSubmit}>
-                    <input
-                      type="text"
-                      value={sourceValue}
-                      onChange={(e) => setSourceValue(e.target.value)}
-                      placeholder={
-                        source === 'local'
-                          ? '/Users/you/myproject'
-                          : 'https://github.com/user/repo'
-                      }
-                      className="w-full rounded-lg border border-neutral-800 bg-black px-3.5 py-2.5 font-mono text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-500"
-                    />
-                  </form>
+                  <input
+                    type="text"
+                    value={sourceValue}
+                    onChange={(e) => setSourceValue(e.target.value)}
+                    placeholder={
+                      source === 'local'
+                        ? '/path/on/the/server/project'
+                        : 'https://github.com/user/repo'
+                    }
+                    className="w-full rounded-lg border border-neutral-800 bg-black px-3.5 py-2.5 font-mono text-sm text-white outline-none placeholder:text-neutral-600 focus:border-neutral-500"
+                  />
+                  {source === 'local' && (
+                    <p className="mt-1.5 text-xs text-neutral-600">
+                      Reads a directory on the machine running the API — ideal when you run
+                      Codebase Explainer locally. For code elsewhere, use a GitHub URL.
+                    </p>
+                  )}
                 </div>
               </li>
 
@@ -375,8 +380,7 @@ export function HomePage() {
                     </div>
                   )}
                   <button
-                    type="button"
-                    onClick={handleAnalysisSubmit}
+                    type="submit"
                     disabled={submitting || !sourceValue.trim()}
                     className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-white py-2.5 text-sm font-medium text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -390,6 +394,7 @@ export function HomePage() {
                 </div>
               </li>
             </ol>
+            </form>
           </div>
         </motion.div>
       </div>

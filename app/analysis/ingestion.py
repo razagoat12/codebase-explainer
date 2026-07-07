@@ -29,13 +29,45 @@ SKIP_DIRS = {
 }
 
 
+# Absolute system directories that must never be handed to the ingestion
+# pipeline (their contents would otherwise be read and forwarded to the LLM
+# API, then persisted in the analysis record). This is a blocklist rather
+# than an allowlist so legitimate project directories anywhere on disk
+# (home dir, /opt, /srv, temp dirs used by the test suite, etc.) keep working.
+#
+# Two tiers:
+# - _BLOCKED_EXACT: only the bare directory itself is refused. "/Users" and
+#   "/home" hold *every* user's home directory, but each individual home
+#   (e.g. /Users/alice) is a legitimate, common place to keep projects, so
+#   only bulk access to the parent is blocked, not everything beneath it.
+# - _BLOCKED_SUBTREES: the directory and everything nested inside it is
+#   refused. Note "/" itself is handled by _BLOCKED_EXACT, not here — every
+#   absolute path's ancestor chain ends at "/", so putting it in the
+#   subtree set would make every path match.
+_BLOCKED_EXACT = {Path(p) for p in ("/", "/Users", "/home")}
+_BLOCKED_SUBTREES = {
+    Path(p)
+    for p in (
+        "/etc", "/private/etc", "/root", "/System", "/Library",
+        "/usr", "/bin", "/sbin", "/boot", "/sys", "/proc", "/Applications",
+    )
+}
+
+
 def is_safe_path(directory: str) -> Path:
-    """Resolve and validate the path is an existing directory (no traversal)."""
+    """Resolve and validate the path is an existing directory outside any
+    blocked system root (no traversal, no reading OS/config directories)."""
     p = Path(directory).resolve()
     if not p.exists():
         raise ValueError(f"Path does not exist: {directory}")
     if not p.is_dir():
         raise ValueError(f"Path is not a directory: {directory}")
+    if (
+        p in _BLOCKED_EXACT
+        or p in _BLOCKED_SUBTREES
+        or any(root in p.parents for root in _BLOCKED_SUBTREES)
+    ):
+        raise ValueError(f"Refusing to analyze system directory: {directory}")
     return p
 
 

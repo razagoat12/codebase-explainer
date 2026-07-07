@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError, getToken, setToken } from '@/lib/api';
+import { Turnstile } from '@/components/Turnstile';
 
 const DotGridBackground = lazy(() =>
   import('@/components/DotGridBackground').then((m) => ({ default: m.DotGridBackground }))
@@ -40,7 +41,7 @@ const AppleIcon = (
 );
 
 const socialBtnClass =
-  'mb-1.5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-neutral-700 bg-transparent py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-neutral-800';
+  'mb-1.5 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-md border border-neutral-800 bg-transparent py-2.5 text-sm font-medium text-neutral-500 opacity-60';
 
 const darkInputClass =
   'w-full rounded-md border border-neutral-700 bg-black px-3.5 py-2.5 text-sm text-white outline-none focus:border-neutral-500';
@@ -52,7 +53,9 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [authMsg, setAuthMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | undefined>(undefined);
   const isLogin = authMode === 'login';
+  const turnstileConfigured = Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY);
 
   useEffect(() => {
     if (getToken()) navigate('/');
@@ -64,7 +67,7 @@ export function LoginPage() {
     setAuthSubmitting(true);
     try {
       if (authMode === 'register') {
-        await api.register(email, password);
+        await api.register(email, password, turnstileToken);
         setAuthMsg({ text: 'Registered! Logging you in…', ok: true });
         const tok = await api.login(email, password);
         setToken(tok.access_token);
@@ -135,9 +138,17 @@ export function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             className={darkInputClass}
           />
+          {!isLogin && (
+            <Turnstile
+              onVerify={setTurnstileToken}
+              onExpire={() => setTurnstileToken(undefined)}
+            />
+          )}
           <button
             type="submit"
-            disabled={authSubmitting}
+            disabled={
+              authSubmitting || (!isLogin && turnstileConfigured && !turnstileToken)
+            }
             className="w-full cursor-pointer rounded-md bg-[#ededed] py-2.5 text-sm font-medium text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {authSubmitting
@@ -150,15 +161,16 @@ export function LoginPage() {
 
         <div className="my-3.5 h-px w-full bg-neutral-800" />
 
-        <button type="button" className={socialBtnClass}>
+        <p className="mb-2 text-xs text-neutral-600">Social sign-in — coming soon</p>
+        <button type="button" disabled title="Coming soon" className={socialBtnClass}>
           {GoogleIcon}
           {isLogin ? 'Continue with Google' : 'Sign up with Google'}
         </button>
-        <button type="button" className={socialBtnClass}>
+        <button type="button" disabled title="Coming soon" className={socialBtnClass}>
           {GitHubIcon}
           {isLogin ? 'Continue with GitHub' : 'Sign up with GitHub'}
         </button>
-        <button type="button" className={`${socialBtnClass} mb-0`}>
+        <button type="button" disabled title="Coming soon" className={`${socialBtnClass} mb-0`}>
           {AppleIcon}
           {isLogin ? 'Continue with Apple' : 'Sign up with Apple'}
         </button>
@@ -181,13 +193,13 @@ export function LoginPage() {
           By proceeding, you agree to creating a CodeBase account
           <br />
           subject to our{' '}
-          <a href="#" className="text-neutral-300 hover:underline">
+          <Link to="/terms" className="text-neutral-300 hover:underline">
             Terms of Service
-          </a>{' '}
+          </Link>{' '}
           and{' '}
-          <a href="#" className="text-neutral-300 hover:underline">
+          <Link to="/privacy" className="text-neutral-300 hover:underline">
             Privacy Policy
-          </a>
+          </Link>
           .
         </div>
       </div>
