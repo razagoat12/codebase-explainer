@@ -4,8 +4,7 @@
 
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
-Instead, email **`<your-security-contact-email-here>`** *(replace this before your first public
-release)* with:
+Instead, email ** 70114@cch.edu.pk **  with:
 
 - A description of the vulnerability and its potential impact
 - Steps to reproduce (a minimal repro is ideal)
