@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.6.1",
     "@sentry/react": "^10.63.0",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.11",
@@ -19,6 +20,7 @@
     "motion": "^12.42.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-icons": "^5.7.0",
     "react-router-dom": "^7.18.1",
     "tailwind-merge": "^3.6.0",
     "three": "^0.185.1"

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ArrowRight, ChevronUp, Folder, Gauge, GitBranch } from 'lucide-react';
 import {
@@ -11,6 +11,7 @@ import {
 import { Web3Hero } from '@/components/Web3Hero';
 import { HowItWorksDiagram } from '@/components/HowItWorksDiagram';
 import { FloatingPaths } from '@/components/FloatingPaths';
+import { Footer } from '@/components/Footer';
 import { api, ApiError, type MeResponse } from '@/lib/api';
 import { useAuthState } from '@/lib/useAuthState';
 
@@ -142,77 +143,7 @@ export function HomePage() {
           </div>
         </div>
 
-        <footer className="border-t border-neutral-900 bg-black px-6 py-12">
-          <div className="mx-auto grid max-w-5xl grid-cols-2 gap-8 sm:grid-cols-4">
-            <div>
-              <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-neutral-600">
-                Product
-              </p>
-              <ul className="space-y-2 text-sm text-neutral-400">
-                <li>
-                  <Link to="/product" className="transition hover:text-white">
-                    Overview
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/pricing" className="transition hover:text-white">
-                    Pricing
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/docs" className="transition hover:text-white">
-                    Docs
-                  </Link>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-neutral-600">
-                Company
-              </p>
-              <ul className="space-y-2 text-sm text-neutral-400">
-                <li>
-                  <Link to="/customers" className="transition hover:text-white">
-                    Customers
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/partners" className="transition hover:text-white">
-                    Partners
-                  </Link>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-neutral-600">
-                Learn
-              </p>
-              <ul className="space-y-2 text-sm text-neutral-400">
-                <li>
-                  <Link to="/resources" className="transition hover:text-white">
-                    Resources
-                  </Link>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-neutral-600">
-                Legal
-              </p>
-              <ul className="space-y-2 text-sm text-neutral-400">
-                <li>
-                  <Link to="/privacy" className="transition hover:text-white">
-                    Privacy Policy
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div className="mx-auto mt-10 flex max-w-5xl items-center justify-between border-t border-neutral-900 pt-6 text-xs text-neutral-600">
-            <span>© {new Date().getFullYear()} Codebase Explainer</span>
-            <span>Built on FastAPI, React &amp; NVIDIA</span>
-          </div>
-        </footer>
+        <Footer />
       </div>
     );
   }
