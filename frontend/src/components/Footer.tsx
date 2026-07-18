@@ -2,7 +2,8 @@ import { Link } from "react-router-dom";
 import { FaLinkedinIn, FaInstagram } from "react-icons/fa";
 import { cn } from "@/lib/utils";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import React, { useMemo, useRef, useState, MouseEvent, useCallback, useEffect } from "react";
+import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
+import type { MouseEvent } from "react";
 import * as THREE from "three";
 import { motion } from "motion/react";
 
@@ -675,7 +676,7 @@ export function Footer({
             ))}
           </div>
 
-          {socialLinks.slice(0, 2).map((link, i) => (
+          {socialLinks.slice(0, 2).map((link) => (
             <AnimatedIconLink
               key={link.ariaLabel}
               href={link.href}
