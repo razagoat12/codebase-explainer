@@ -1,8 +1,3 @@
-<!--
-  Before publishing: replace <github-username> below with your real GitHub
-  username/org so the CI and star/fork badges point at the right repo.
--->
-
 <p align="center">
   <img src="docs/banner.svg" alt="Codebase Explainer" width="100%" />
 </p>
@@ -16,11 +11,11 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6.svg?style=flat-square&logo=typescript&logoColor=white">
   <img alt="SQLAlchemy" src="https://img.shields.io/badge/SQLAlchemy-2.0-D71F00.svg?style=flat-square&logo=sqlalchemy&logoColor=white">
   <br/>
-  <a href="https://github.com/&lt;github-username&gt;/codebase-explainer/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/%3Cgithub-username%3E/codebase-explainer/ci.yml?style=flat-square&label=CI"></a>
+  <a href="https://github.com/razagoat12/codebase-explainer/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/razagoat12/codebase-explainer/ci.yml?style=flat-square&label=CI"></a>
   <img alt="Tests" src="https://img.shields.io/badge/tests-32%20passing-brightgreen.svg?style=flat-square">
   <img alt="Maintenance" src="https://img.shields.io/badge/maintained-yes-brightgreen.svg?style=flat-square">
   <img alt="PRs Welcome" src="https://img.shields.io/badge/PRs-welcome-ff69b4.svg?style=flat-square">
-  <a href="https://github.com/&lt;github-username&gt;/codebase-explainer/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/%3Cgithub-username%3E/codebase-explainer?style=flat-square"></a>
+  <a href="https://github.com/razagoat12/codebase-explainer/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/razagoat12/codebase-explainer?style=flat-square"></a>
 </p>
 
 <h3 align="center">Understand, plan, and secure any codebase — in plain language.</h3>
@@ -153,7 +148,7 @@ chain — each tier optional, skipped entirely if its key isn't configured.
 ## 🚀 Quick start
 
 ```bash
-git clone https://github.com/<github-username>/codebase-explainer.git
+git clone https://github.com/razagoat12/codebase-explainer.git
 cd codebase-explainer
 
 # Backend

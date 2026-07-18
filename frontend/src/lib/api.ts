@@ -77,6 +77,11 @@ export function subscribeAuthChanged(callback: () => void): () => void {
   return () => window.removeEventListener(AUTH_CHANGED_EVENT, callback);
 }
 
+// Absolute backend origin for split deploys (frontend on Vercel, backend on
+// Render/Railway/etc). Empty by default, meaning relative paths — same-origin
+// single-process deploy or the Vite dev proxy, both unchanged from before.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
@@ -88,7 +93,7 @@ async function request<T>(
     ...(options.headers as Record<string, string> | undefined),
   };
 
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
