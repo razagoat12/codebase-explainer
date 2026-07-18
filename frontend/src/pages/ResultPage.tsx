@@ -5,6 +5,7 @@ import mermaid from 'mermaid';
 import DOMPurify from 'dompurify';
 import { ShieldAlert, Zap } from 'lucide-react';
 import { api, ApiError, getToken, type AnalysisResult } from '@/lib/api';
+import { AsciiArt } from '@/components/AsciiArt';
 
 mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
 
@@ -39,6 +40,44 @@ const SEV_BORDER: Record<string, string> = {
 
 // The backend runs five agents and reports a completed-stage count (0–5).
 const PIPELINE_STAGE_COUNT = 5;
+
+// Flavor text cycled while the pipeline runs — one line per beat of the
+// five-agent pipeline (difficulty, explainer, planner, diagram, security),
+// written with enough personality that a minute-long wait doesn't feel dead.
+const ANALYSIS_FLAVOR_TEXT = [
+  'Reading every file like it owes us money.',
+  'Sizing up the difficulty like a judge scoring a routine.',
+  'Explaining it the way Einstein would — simply, but not simpler.',
+  'Sketching the architecture before the ink dries.',
+  'Interrogating dependencies one by one.',
+  'Running a SWAT sweep for security holes.',
+  'Hunting bugs like a bloodhound on a trail.',
+  'Cross-examining the code for hidden vulnerabilities.',
+  'Turning spaghetti into a straight line.',
+  'Mapping how the pieces actually talk to each other.',
+  'Drafting the plan a new hire would wish they had.',
+  'Double-checking the scary-looking parts twice.',
+];
+
+function AnalysisFlavorLine() {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setIndex((i) => (i + 1) % ANALYSIS_FLAVOR_TEXT.length);
+    }, 2600);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <p
+      key={index}
+      className="mt-4 animate-[fade-in_0.4s_ease-out] font-mono text-sm text-neutral-400"
+    >
+      {ANALYSIS_FLAVOR_TEXT[index]}
+    </p>
+  );
+}
 
 type TabName = 'explanation' | 'plan' | 'diagram' | 'security';
 
@@ -223,20 +262,25 @@ export function ResultPage() {
         )}
 
         {isPolling && (
-          <div className="rounded-2xl border border-neutral-800 bg-white/5 p-10 text-center backdrop-blur">
-            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-neutral-800 border-t-white" />
-            <p className="font-mono font-medium text-neutral-300">Analysing your codebase…</p>
-            <p className="mt-1 text-sm text-neutral-500">
-              {Math.min(data?.progress ?? 0, PIPELINE_STAGE_COUNT)} of {PIPELINE_STAGE_COUNT} agents
-              complete · usually a minute or two
-            </p>
-            <div className="mx-auto mt-5 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-neutral-800">
-              <div
-                className="h-full rounded-full bg-white transition-all duration-500 ease-out"
-                style={{
-                  width: `${(Math.min(data?.progress ?? 0, PIPELINE_STAGE_COUNT) / PIPELINE_STAGE_COUNT) * 100}%`,
-                }}
-              />
+          <div className="relative overflow-hidden rounded-2xl border border-neutral-800 bg-white/5 p-10 text-center backdrop-blur">
+            <AsciiArt className="pointer-events-none absolute inset-0 h-full w-full opacity-10 mix-blend-screen" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-neutral-950/40 via-transparent to-neutral-950/60" />
+            <div className="relative">
+              <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-neutral-800 border-t-white" />
+              <p className="font-mono font-medium text-neutral-300">Analysing your codebase…</p>
+              <p className="mt-1 text-sm text-neutral-500">
+                {Math.min(data?.progress ?? 0, PIPELINE_STAGE_COUNT)} of {PIPELINE_STAGE_COUNT} agents
+                complete · usually a minute or two
+              </p>
+              <div className="mx-auto mt-5 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-neutral-800">
+                <div
+                  className="h-full rounded-full bg-white transition-all duration-500 ease-out"
+                  style={{
+                    width: `${(Math.min(data?.progress ?? 0, PIPELINE_STAGE_COUNT) / PIPELINE_STAGE_COUNT) * 100}%`,
+                  }}
+                />
+              </div>
+              <AnalysisFlavorLine />
             </div>
           </div>
         )}
