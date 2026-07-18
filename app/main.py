@@ -58,13 +58,16 @@ app.include_router(analysis_router)
 
 # React frontend (Vite build output). Vite-hashed assets are served directly;
 # any other path falls back to index.html so React Router can handle it client-side.
+# Only present for the single-process deploy — a split deploy (frontend on
+# Vercel, backend here) never builds frontend/dist, so this whole block is
+# skipped rather than crashing the app at import time.
 FRONTEND_DIST = Path("frontend/dist").resolve()
-app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets")
+if (FRONTEND_DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets")
 
-
-@app.get("/{full_path:path}", include_in_schema=False)
-async def spa(full_path: str):
-    candidate = (FRONTEND_DIST / full_path).resolve()
-    if full_path and candidate.is_relative_to(FRONTEND_DIST) and candidate.is_file():
-        return FileResponse(candidate)
-    return FileResponse(FRONTEND_DIST / "index.html")
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa(full_path: str):
+        candidate = (FRONTEND_DIST / full_path).resolve()
+        if full_path and candidate.is_relative_to(FRONTEND_DIST) and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(FRONTEND_DIST / "index.html")
