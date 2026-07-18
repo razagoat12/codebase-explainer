@@ -263,8 +263,8 @@ export function ResultPage() {
 
         {isPolling && (
           <div className="relative overflow-hidden rounded-2xl border border-neutral-800 bg-white/5 p-10 text-center backdrop-blur">
-            <AsciiArt className="pointer-events-none absolute inset-0 h-full w-full opacity-10 mix-blend-screen" />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-neutral-950/40 via-transparent to-neutral-950/60" />
+            <AsciiArt className="pointer-events-none absolute inset-0 h-full w-full opacity-35" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-neutral-950/60 via-neutral-950/20 to-neutral-950/70" />
             <div className="relative">
               <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-neutral-800 border-t-white" />
               <p className="font-mono font-medium text-neutral-300">Analysing your codebase…</p>
