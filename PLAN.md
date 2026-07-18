@@ -7,6 +7,12 @@
 - **Real progress** — new `progress` column on `analyses` (0–5), committed as each agent finishes and additively migrated in `database.py:_run_lightweight_migrations`. `ResultPage` shows a real "N of 5 agents complete" bar instead of a fake rotating spinner + the old "~30 seconds" copy.
 - **Product clarity** — added a real Terms of Service page (`/terms`, wired from the login footer, previously a dead `#` link); local-path submit copy now honestly states it reads the *server host's* filesystem (kept both sources per product decision).
 
+**2026-07-16 — analysis-quality + reliability pass:**
+- **Ranked file selection** — agents no longer see the first N files in walk order truncated to 400 chars. `_select_files` (`app/analysis/agents.py`) scores files (READMEs, manifests, entry points, source > markup, shallow > nested, tests deprioritised) and budgets rose to 12–16 files × 2500 chars (~10K tokens worst case). The security auditor additionally boosts auth/config/db-flavoured paths.
+- **Difficulty agent hardening** — malformed JSON from the model now triggers one strict-instruction retry, then a neutral default (level Intermediate, primary language inferred from extension stats) instead of failing the whole chain with an unhandled `json.loads`. Out-of-range `level` values are normalised.
+- **Quota refunds** — cache-served and errored analyses refund the credit charged at submission (`_refund_quota` in `app/analysis/routes.py`). Charging still happens up-front so concurrent submissions can't bypass the quota check.
+- Test suite: 24 → 32, all offline.
+
 **Deferred to a later pass (roadmap Phase 4):**
 - **Follow-up Q&A chat** — let users ask questions about an analyzed codebase after the report generates (chosen direction; not built this pass). Would reuse ingested content; needs a new endpoint + chat UI + a decision on whether to persist raw snippets (currently we deliberately do not).
 

@@ -86,10 +86,69 @@ _fallback_backends: list[_FallbackBackend] = [
     if b is not None
 ]
 
-# Nemotron is a reasoning model — it can be slow. Keep prompts lean.
-_MAX_ASSESSOR_FILES = 8
-_MAX_EXPLAINER_FILES = 10
-_MAX_FILE_CHARS = 400
+# Prompt budgets. Worst case (explainer): 16 files × 2500 chars ≈ 40K chars
+# ≈ 10K tokens — well within Nemotron's context while keeping latency sane.
+# Files are *ranked* before selection (see _select_files), so these budgets go
+# to READMEs, entry points, and manifests instead of walk-order arbitrary files.
+_MAX_ASSESSOR_FILES = 12
+_MAX_EXPLAINER_FILES = 16
+_MAX_FILE_CHARS = 2500
+
+# File-ranking signals. READMEs and manifests tell the model what the project
+# *is*; entry points anchor the control flow; plain source beats markup/styles.
+_ENTRYPOINT_STEMS = {"main", "index", "app", "server", "cli", "__main__", "setup"}
+_MANIFEST_NAMES = {
+    "package.json", "pyproject.toml", "requirements.txt", "go.mod",
+    "cargo.toml", "gemfile", "composer.json", "pom.xml", "build.gradle",
+    "dockerfile", "docker-compose.yml", "makefile",
+}
+_SOURCE_EXTENSIONS = {
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java", ".kt",
+    ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php", ".swift", ".scala",
+}
+
+# Paths matching these substrings get a boost for the security auditor —
+# auth flows, config, and DB access are where its findings live.
+_SECURITY_KEYWORDS = (
+    "auth", "login", "password", "token", "secret", "config", "settings",
+    "env", "db", "database", "sql", "api", "crypto", "session",
+)
+
+
+def _score_file(f: dict, keywords: tuple[str, ...] | None = None) -> float:
+    path = f["path"].lower()
+    name = path.rsplit("/", 1)[-1]
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    ext = "." + name.rsplit(".", 1)[-1] if "." in name else ""
+
+    score = 0.0
+    if stem == "readme":
+        score += 50
+    if name in _MANIFEST_NAMES:
+        score += 40
+    if stem in _ENTRYPOINT_STEMS:
+        score += 35
+    if ext in _SOURCE_EXTENSIONS:
+        score += 20
+    if keywords and any(k in path for k in keywords):
+        score += 25
+    # Shallow files describe the project better than deeply nested ones
+    score -= path.count("/") * 4
+    # Tests restate the source; deprioritise (mildly — they still rank above
+    # nothing when the budget allows)
+    if "test" in path or "spec" in path:
+        score -= 15
+    # Substance bonus: bigger files carry more signal, capped so a giant
+    # lockfile-ish blob can't outrank an entry point
+    score += min(f.get("size") or len(f["content"]), 20000) / 2000
+    return score
+
+
+def _select_files(files: list[dict], max_files: int, keywords: tuple[str, ...] | None = None) -> list[dict]:
+    """Pick the most informative files, highest score first (path breaks ties
+    so selection is deterministic for identical content)."""
+    ranked = sorted(files, key=lambda f: (-_score_file(f, keywords), f["path"]))
+    return ranked[:max_files]
 
 
 def _chat(system: str, user: str, temperature: float = 0.3, max_tokens: int = 4096) -> str:
@@ -158,9 +217,14 @@ def _chat(system: str, user: str, temperature: float = 0.3, max_tokens: int = 40
     raise last_exc
 
 
-def _format_files(files: list[dict], max_files: int, max_chars: int) -> str:
+def _format_files(
+    files: list[dict],
+    max_files: int,
+    max_chars: int,
+    keywords: tuple[str, ...] | None = None,
+) -> str:
     parts = []
-    for f in files[:max_files]:
+    for f in _select_files(files, max_files, keywords):
         snippet = f["content"][:max_chars]
         if len(f["content"]) > max_chars:
             snippet += "\n... (truncated)"
@@ -199,6 +263,34 @@ Return ONLY valid JSON (no markdown fences, no extra text) with exactly these ke
 }"""
 
 
+# Extension → language, used only for the degraded default when the model
+# returns unparseable JSON twice. Rough is fine — it's a last resort.
+_EXT_LANGUAGE = {
+    ".py": "Python", ".js": "JavaScript", ".ts": "TypeScript",
+    ".jsx": "JavaScript", ".tsx": "TypeScript", ".go": "Go", ".rs": "Rust",
+    ".java": "Java", ".kt": "Kotlin", ".c": "C", ".cpp": "C++", ".cs": "C#",
+    ".rb": "Ruby", ".php": "PHP", ".swift": "Swift", ".scala": "Scala",
+}
+
+_VALID_LEVELS = {"Beginner", "Intermediate", "Advanced"}
+
+
+def _default_difficulty(language_counts: dict[str, int]) -> dict:
+    """Degraded result when the model can't produce parseable JSON. The rest
+    of the pipeline (Explainer, Planner) only needs *a* difficulty to proceed
+    — better to continue with a neutral default than fail the whole analysis."""
+    primary = "Unknown"
+    if language_counts:
+        top_ext = max(language_counts, key=language_counts.get)
+        primary = _EXT_LANGUAGE.get(top_ext, top_ext.lstrip(".").upper() or "Unknown")
+    return {
+        "level": "Intermediate",
+        "reason": "Automatic difficulty assessment was unavailable; defaulted to Intermediate.",
+        "primary_language": primary,
+        "frameworks": [],
+    }
+
+
 def assess_difficulty(ingestion_result: dict) -> dict:
     lang_stats = json.dumps(ingestion_result["stats"]["language_counts"], indent=2)
     sample_files = _format_files(ingestion_result["files"], _MAX_ASSESSOR_FILES, _MAX_FILE_CHARS)
@@ -212,8 +304,31 @@ Language stats:
 File samples:
 {sample_files}"""
 
-    raw = _chat(_DIFFICULTY_SYSTEM, user_msg)
-    return json.loads(_extract_json(raw))
+    # The Explainer and Planner both depend on this result, so a malformed
+    # response here must not sink the whole chain: retry once with a stricter
+    # instruction, then fall back to a neutral default.
+    for attempt, system in enumerate((
+        _DIFFICULTY_SYSTEM,
+        _DIFFICULTY_SYSTEM + "\nYour previous response was not valid JSON. "
+        "Respond with the raw JSON object only — no prose, no fences.",
+    )):
+        raw = _chat(system, user_msg)
+        try:
+            result = json.loads(_extract_json(raw))
+        except json.JSONDecodeError:
+            logger.warning("Difficulty agent returned unparseable JSON (attempt %d)", attempt + 1)
+            continue
+        if not isinstance(result, dict):
+            logger.warning("Difficulty agent returned non-object JSON (attempt %d)", attempt + 1)
+            continue
+        if result.get("level") not in _VALID_LEVELS:
+            result["level"] = "Intermediate"
+        result.setdefault("reason", "")
+        result.setdefault("primary_language", "Unknown")
+        result.setdefault("frameworks", [])
+        return result
+
+    return _default_difficulty(ingestion_result["stats"]["language_counts"])
 
 
 # ── Agent 2: Explainer ─────────────────────────────────────────────────────────
@@ -305,7 +420,10 @@ findings and risk_level "Low"."""
 
 
 def audit_security(ingestion_result: dict) -> dict:
-    files = _format_files(ingestion_result["files"], _MAX_EXPLAINER_FILES, _MAX_FILE_CHARS)
+    files = _format_files(
+        ingestion_result["files"], _MAX_EXPLAINER_FILES, _MAX_FILE_CHARS,
+        keywords=_SECURITY_KEYWORDS,
+    )
     user_msg = f"""File tree:
 {ingestion_result["file_tree"]}
 

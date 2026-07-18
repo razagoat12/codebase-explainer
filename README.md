@@ -17,7 +17,7 @@
   <img alt="SQLAlchemy" src="https://img.shields.io/badge/SQLAlchemy-2.0-D71F00.svg?style=flat-square&logo=sqlalchemy&logoColor=white">
   <br/>
   <a href="https://github.com/&lt;github-username&gt;/codebase-explainer/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/%3Cgithub-username%3E/codebase-explainer/ci.yml?style=flat-square&label=CI"></a>
-  <img alt="Tests" src="https://img.shields.io/badge/tests-24%20passing-brightgreen.svg?style=flat-square">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-32%20passing-brightgreen.svg?style=flat-square">
   <img alt="Maintenance" src="https://img.shields.io/badge/maintained-yes-brightgreen.svg?style=flat-square">
   <img alt="PRs Welcome" src="https://img.shields.io/badge/PRs-welcome-ff69b4.svg?style=flat-square">
   <a href="https://github.com/&lt;github-username&gt;/codebase-explainer/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/%3Cgithub-username%3E/codebase-explainer?style=flat-square"></a>
@@ -66,7 +66,7 @@
 - 🌐 **GitHub repo analysis** via the public REST API — no auth needed for public repos.
 - 🎨 **Polished dark-mode UI** — React 19 + Tailwind 4 + Motion animations, live Mermaid diagram
   rendering, and a markdown report viewer.
-- 🧪 **24 passing tests**, offline-mocked (no live API calls), with CI running on every push.
+- 🧪 **32 passing tests**, offline-mocked (no live API calls), with CI running on every push.
 
 ---
 
@@ -128,7 +128,7 @@ chain — each tier optional, skipped entirely if its key isn't configured.
 - **slowapi** — per-IP rate limiting
 - **sentry-sdk** — error tracking (optional)
 - **Celery + Redis** — optional background queue (off by default)
-- **pytest + pytest-asyncio** — 24 offline-mocked tests
+- **pytest + pytest-asyncio** — 32 offline-mocked tests
 
 </td><td valign="top">
 
@@ -229,7 +229,7 @@ Full interactive schema is auto-generated at `/docs` (Swagger UI) once the serve
 ## 🧪 Testing
 
 ```bash
-.venv/bin/pytest tests/ -q       # 24 tests, all offline (LLM calls are mocked)
+.venv/bin/pytest tests/ -q       # 32 tests, all offline (LLM calls are mocked)
 
 cd frontend
 npx tsc -b                       # typecheck

@@ -192,6 +192,16 @@ async def _run_pipeline_with_progress(ingestion: dict, analysis: Analysis, db: A
     }
 
 
+async def _refund_quota(db: AsyncSession, user_id: str) -> None:
+    """Give back the analysis credit consumed at submission. Quota is charged
+    up-front (so concurrent submissions can't slip past the check), then
+    refunded here when the analysis cost nothing (cache hit) or delivered
+    nothing (pipeline error)."""
+    user = await db.get(User, user_id)
+    if user and user.monthly_usage > 0:
+        user.monthly_usage -= 1
+
+
 async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None:
     """Background task: ingest → check cache → run pipeline → persist."""
     async with _session_factory() as db:
@@ -212,10 +222,12 @@ async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None
             content_hash = compute_content_hash(ingestion["files"])
             analysis.content_hash = content_hash
 
-            # Cache lookup — identical content = serve from cache
+            # Cache lookup — identical content = serve from cache, no model
+            # calls made, so the user gets their credit back
             cached = await _find_cached(db, content_hash)
             if cached and cached.id != analysis.id:
                 _copy_cached_results(analysis, cached)
+                await _refund_quota(db, analysis.user_id)
                 await db.commit()
                 return
 
@@ -243,6 +255,8 @@ async def _run_analysis(analysis_id: str, source: str, source_type: str) -> None
         except Exception as exc:
             analysis.status = AnalysisStatus.error
             analysis.error_message = str(exc)
+            # Failed analyses shouldn't count against the monthly quota
+            await _refund_quota(db, analysis.user_id)
 
         await db.commit()
 
