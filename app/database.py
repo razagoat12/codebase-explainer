@@ -1,9 +1,19 @@
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
 
-engine = create_async_engine(settings.database_url, echo=False)
+# asyncpg's server-side prepared-statement cache breaks against poolers that
+# run in transaction mode (e.g. Neon's "-pooler" endpoint, PgBouncer) — the
+# pooler can hand a later query to a different backend connection than the
+# one that prepared it. Disabling the cache costs a little latency per query
+# but is required for correctness against pooled Postgres.
+_connect_args = {}
+if make_url(settings.database_url).drivername == "postgresql+asyncpg":
+    _connect_args["statement_cache_size"] = 0
+
+engine = create_async_engine(settings.database_url, echo=False, connect_args=_connect_args)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
