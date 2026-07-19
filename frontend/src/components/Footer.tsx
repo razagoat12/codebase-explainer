@@ -37,7 +37,8 @@ interface ShaderProps {
 
 interface FooterLink {
   label: string;
-  href: string;
+  href?: string;
+  onClick?: () => void;
 }
 
 interface SocialLink {
@@ -60,6 +61,7 @@ interface FooterProps {
     year?: number;
     additionalText?: string;
   };
+  onFaqClick?: () => void;
 }
 
 type Uniforms = {
@@ -272,15 +274,22 @@ const DecryptText = ({
 
 const AnimatedLink = ({
   href,
+  onClick,
   children,
   className
 }: {
-  href: string;
+  href?: string;
+  onClick?: () => void;
   children: React.ReactNode;
   className?: string;
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const textContent = typeof children === 'string' ? children : '';
+  const content = typeof children === 'string' ? (
+    <ShinyText isShining={isHovered} speed={1}>
+      <DecryptText text={textContent} isDecrypting={isHovered} />
+    </ShinyText>
+  ) : children;
 
   return (
     <motion.div
@@ -298,16 +307,22 @@ const AnimatedLink = ({
         }}
         transition={{ duration: 0.3 }}
       />
-      <Link
-        to={href}
-        className={cn("z-10 relative h-full", className)}
-      >
-        {typeof children === 'string' ? (
-          <ShinyText isShining={isHovered} speed={1}>
-            <DecryptText text={textContent} isDecrypting={isHovered} />
-          </ShinyText>
-        ) : children}
-      </Link>
+      {onClick ? (
+        <button
+          type="button"
+          onClick={onClick}
+          className={cn("z-10 relative h-full cursor-pointer", className)}
+        >
+          {content}
+        </button>
+      ) : (
+        <Link
+          to={href!}
+          className={cn("z-10 relative h-full", className)}
+        >
+          {content}
+        </Link>
+      )}
     </motion.div>
   );
 };
@@ -634,20 +649,23 @@ export function Footer({
       ariaLabel: "Instagram"
     }
   ],
-  links = [
-    { label: "Overview", href: "/product" },
-    { label: "Pricing", href: "/pricing" },
-    { label: "Docs", href: "/docs" },
-    { label: "Customers", href: "/customers" },
-    { label: "Privacy Policy", href: "/privacy" }
-  ],
+  links,
   companyDescription = "Codebase Explainer turns any repository into a guided walkthrough: a difficulty assessment, plain-language explanations, an execution plan, architecture diagrams, and a security audit, powered by NVIDIA Nemotron.",
   copyright = {
     companyName: "Codebase Explainer",
     year: new Date().getFullYear(),
     additionalText: "Built on FastAPI, React & NVIDIA"
-  }
+  },
+  onFaqClick
 }: FooterProps) {
+  const resolvedLinks: FooterLink[] = links ?? [
+    { label: "Overview", href: "/product" },
+    { label: "Pricing", href: "/pricing" },
+    { label: "Docs", href: "/docs" },
+    { label: "FAQ", onClick: onFaqClick },
+    { label: "Privacy Policy", href: "/privacy" }
+  ];
+
   return (
    <footer className="w-full bg-black text-white border-t border-neutral-900">
       <div className="w-full py-8 min-[1250px]:py-16">
@@ -699,10 +717,11 @@ export function Footer({
           </div>
 
           <div className="grid grid-cols-2 min-[1250px]:hidden border-b border-white/20">
-            {links.slice(0, 4).map((link, i) => (
+            {resolvedLinks.slice(0, 4).map((link, i) => (
               <AnimatedLink
                 key={link.label}
                 href={link.href}
+                onClick={link.onClick}
                 className={cn(
                   "py-6 flex items-center justify-center text-sm text-white hover:text-white/70 transition-colors w-full",
                   i % 2 === 0 ? "border-r border-white/20" : "",
@@ -714,10 +733,11 @@ export function Footer({
             ))}
           </div>
 
-          {links.slice(0, 2).map((link, i) => (
+          {resolvedLinks.slice(0, 2).map((link, i) => (
             <AnimatedLink
               key={link.label}
               href={link.href}
+              onClick={link.onClick}
               className={cn(
                 "hidden min-[1250px]:flex min-[1250px]:col-span-1 min-[1250px]:row-span-1 border-b border-white/20 py-8 items-center justify-center text-sm text-white hover:text-white/70 transition-colors w-full",
                 i === 0 ? "border-r border-white/20" : ""
@@ -731,10 +751,11 @@ export function Footer({
             <p>{companyDescription}</p>
           </div>
 
-          {links.slice(2, 5).map((link, i) => (
+          {resolvedLinks.slice(2, 5).map((link, i) => (
             <AnimatedLink
               key={link.label}
               href={link.href}
+              onClick={link.onClick}
               className={cn(
                 "hidden min-[1250px]:flex min-[1250px]:col-span-1 min-[1250px]:row-span-1 py-8 items-center justify-center text-sm text-white hover:text-white/70 transition-colors w-full",
                 i < 2 ? "border-r border-white/20" : ""

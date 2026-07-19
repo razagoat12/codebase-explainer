@@ -4,7 +4,13 @@ import { Link } from 'react-router-dom';
 const NAV_LINKS = ['Product', 'Pricing', 'Docs', 'Customers', 'Resources', 'Partners'];
 const TECH_STACK = ['FastAPI', 'React', 'NVIDIA', 'SQLAlchemy', 'Mermaid', 'GitHub'];
 
-export function Web3Hero({ onGetStarted }: { onGetStarted: () => void }) {
+export function Web3Hero({
+  onGetStarted,
+  onHowItWorks,
+}: {
+  onGetStarted: () => void;
+  onHowItWorks: () => void;
+}) {
   const pillars = [92, 84, 78, 70, 62, 54, 46, 34, 18, 34, 46, 54, 62, 70, 78, 84, 92];
   const [isMounted, setIsMounted] = useState(false);
 
@@ -145,12 +151,13 @@ export function Web3Hero({ onGetStarted }: { onGetStarted: () => void }) {
               >
                 Get Started
               </button>
-              <a
-                href="#how-it-works"
+              <button
+                type="button"
+                onClick={onHowItWorks}
                 className="inline-flex cursor-pointer items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white/90 backdrop-blur hover:border-white/40"
               >
                 How it works
-              </a>
+              </button>
             </div>
           </div>
         </div>

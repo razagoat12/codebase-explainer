@@ -8,6 +8,7 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from '@/components/core/accordion';
+import { Modal } from '@/components/core/modal';
 import { Web3Hero } from '@/components/Web3Hero';
 import { HowItWorksDiagram } from '@/components/HowItWorksDiagram';
 import { FloatingPaths } from '@/components/FloatingPaths';
@@ -79,6 +80,9 @@ export function HomePage() {
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [showFaq, setShowFaq] = useState(false);
+
   useEffect(() => {
     if (loggedIn) {
       api.me().then(setUsage).catch(() => {});
@@ -113,14 +117,28 @@ export function HomePage() {
   if (!loggedIn) {
     return (
       <div className="bg-black">
-        <Web3Hero onGetStarted={() => navigate('/login')} />
+        <Web3Hero
+          onGetStarted={() => navigate('/login')}
+          onHowItWorks={() => setShowHowItWorks(true)}
+        />
 
-        <div id="how-it-works">
-          <HowItWorksDiagram onCtaClick={() => navigate('/login')} />
-        </div>
+        <Footer onFaqClick={() => setShowFaq(true)} />
 
-        <div id="faq" className="bg-black px-6 pb-10">
-          <div className="mx-auto max-w-md rounded-2xl border border-neutral-800 bg-[#121212] p-6">
+        <Modal
+          open={showHowItWorks}
+          onClose={() => setShowHowItWorks(false)}
+          className="max-w-6xl"
+        >
+          <HowItWorksDiagram
+            onCtaClick={() => {
+              setShowHowItWorks(false);
+              navigate('/login');
+            }}
+          />
+        </Modal>
+
+        <Modal open={showFaq} onClose={() => setShowFaq(false)} className="max-w-md">
+          <div className="p-6">
             <h2 className="mb-2 font-semibold text-white">FAQ</h2>
             <Accordion
               className="flex w-full flex-col divide-y divide-neutral-800"
@@ -141,9 +159,7 @@ export function HomePage() {
               ))}
             </Accordion>
           </div>
-        </div>
-
-        <Footer />
+        </Modal>
       </div>
     );
   }
