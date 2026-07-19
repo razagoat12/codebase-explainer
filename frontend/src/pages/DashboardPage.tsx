@@ -11,6 +11,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api, getToken, type AnalysisSummary } from '@/lib/api';
+import { HalftoneTrail } from '@/components/HalftoneTrail';
 
 const STATUS_META: Record<
   string,
@@ -75,8 +76,9 @@ export function DashboardPage() {
   );
 
   return (
-    <div className="min-h-screen bg-neutral-950 p-6">
-      <div className="mx-auto max-w-2xl">
+    <div className="relative min-h-screen overflow-hidden bg-neutral-950 p-6">
+      <HalftoneTrail color="#ffffff" />
+      <div className="relative z-10 mx-auto max-w-2xl">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
